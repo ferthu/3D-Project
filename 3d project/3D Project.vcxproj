@@ -143,9 +143,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="RenderConfiguration.cpp" />
+    <ClCompile Include="RenderObject.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RenderConfiguration.h" />
+    <ClInclude Include="RenderObject.h" />
+    <ClInclude Include="VertexStructureDefinitions.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="TestPixel.hlsl">

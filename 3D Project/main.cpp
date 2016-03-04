@@ -4,6 +4,8 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include "RenderConfiguration.h"
+#include "RenderObject.h"
+#include "VertexStructureDefinitions.h"
 
 using namespace DirectX;
 
@@ -20,7 +22,7 @@ UINT windowHeight = 600;
 
 const bool DEBUG = true;
 
-UINT msaaSamples = 4;
+UINT msaaSamples = 8;		// minimum 1
 
 D3D_FEATURE_LEVEL* featureLevel = nullptr;
 
@@ -31,22 +33,14 @@ ID3D11RenderTargetView* backBufferRenderTargetView;
 ID3D11DepthStencilView* depthView;
 #pragma endregion
 
-#pragma region vertex struct declarations
-struct TestVertex
-{
-	XMFLOAT3 position;
-	XMFLOAT3 color;
-};
-#pragma endregion
-
-RenderConfiguration testConfiguration;
+RenderConfiguration* colorTest;
 
 // declare window procedure function
 LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
 
 void initializeD3D();
-void update();
-void render();
+void Update();
+void Render();
 void createTestInput();
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
@@ -93,13 +87,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 		// graphics loop
 		else
 		{
-			update();
+			Update();
 
-			render();
+			Render();
 		}
 	}
 
 	// release resources
+	delete colorTest;
 	device->Release();
 	deviceContext->Release();
 	swapChain->Release();
@@ -140,7 +135,7 @@ void initializeD3D()
 		&device,
 		featureLevel,
 		&deviceContext);
-
+	
 	// check supported MSAA quality levels and store in msaaQualityLevels
 	UINT msaaQualityLevels;
 	device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, msaaSamples, &msaaQualityLevels);
@@ -156,7 +151,7 @@ void initializeD3D()
 	swapChainDesc.BufferDesc.Scaling					= DXGI_MODE_SCALING_UNSPECIFIED;
 
 	swapChainDesc.SampleDesc.Count		= msaaSamples;
-	swapChainDesc.SampleDesc.Quality	= msaaQualityLevels > 0 ? msaaQualityLevels - 1 : 0;
+	swapChainDesc.SampleDesc.Quality	= msaaQualityLevels - 1;
 
 	swapChainDesc.BufferUsage	= DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapChainDesc.BufferCount	= 1;
@@ -223,12 +218,12 @@ void initializeD3D()
 	depthView->Release();
 }
 
-void update()
+void Update()
 {
 	
 }
 
-void render()
+void Render()
 {
 	// clear window to background color
 	float backgroundColor[] = {0, 0, 0, 1};
@@ -237,21 +232,7 @@ void render()
 	// clear depth buffer
 	deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
-	// set shaders
-	deviceContext->VSSetShader(testConfiguration.vertexShader, nullptr, 0);
-	deviceContext->HSSetShader(nullptr, nullptr, 0);
-	deviceContext->DSSetShader(nullptr, nullptr, 0);
-	deviceContext->GSSetShader(nullptr, nullptr, 0);
-	deviceContext->PSSetShader(testConfiguration.pixelShader, nullptr, 0);
-
-	UINT vertexSize = sizeof(TestVertex);
-	UINT offset = 0;
-	deviceContext->IASetInputLayout(testConfiguration.inputLayout);
-	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	deviceContext->IASetVertexBuffers(0, 1, &(testConfiguration.vertexBuffer), &vertexSize, &offset);
-	deviceContext->IASetIndexBuffer(testConfiguration.indexBuffer, DXGI_FORMAT_R32_UINT, 0);
-
-	deviceContext->DrawIndexed(3, 0, 0);
+	colorTest->Render(deviceContext);
 
 	// display frame
 	swapChain->Present(0, 0);
@@ -259,92 +240,31 @@ void render()
 
 void createTestInput()
 {
-	testConfiguration.vertexElements = 2;
-	D3D11_INPUT_ELEMENT_DESC testDescription[] =
+	VertexElementDescription colorVertexDescription[2];
+	colorVertexDescription[0].semanticName = "POSITION";
+	colorVertexDescription[0].semanticIndex = 0;
+	colorVertexDescription[0].vec4 = false;
+	colorVertexDescription[1].semanticName = "COLOR";
+	colorVertexDescription[1].semanticIndex = 0;
+	colorVertexDescription[1].vec4 = false;
+
+	ColorVertex vertexData[3] = 
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
-		D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, sizeof(XMFLOAT3),
-		D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		{ XMFLOAT3(0.0f, 0.0f, 0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+		{ XMFLOAT3(-0.1f, 0.5f, 0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+		{ XMFLOAT3(0.3f, 0.0f, 0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f) }
 	};
-	testConfiguration.vertexDescription = testDescription;
 
-	testConfiguration.offset = 0;
-	testConfiguration.vertexSize = sizeof(TestVertex);
+	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
 
-	ID3DBlob* vs = nullptr;
-	D3DCompileFromFile(
+	colorTest = RenderConfiguration::CreateRenderConfiguration(
+		device,
+		deviceContext,
+		2,
+		colorVertexDescription,
 		L"TestVertex.hlsl",
-		nullptr,
-		nullptr,
-		"VSmain",
-		"vs_4_0",
-		0,
-		0,
-		&vs,
-		nullptr);
+		L"",
+		L"TestPixel.hlsl");
 
-	device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &(testConfiguration.vertexShader));
-
-	device->CreateInputLayout(
-		testConfiguration.vertexDescription,
-		testConfiguration.vertexElements,
-		vs->GetBufferPointer(),
-		vs->GetBufferSize(),
-		&testConfiguration.inputLayout);
-	vs->Release();
-
-	// ps
-	ID3DBlob* ps = nullptr;
-	D3DCompileFromFile(
-		L"TestPixel.hlsl",
-		nullptr,
-		nullptr,
-		"PSmain",
-		"ps_4_0",
-		0,
-		0,
-		&ps,
-		nullptr);
-
-	device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &(testConfiguration.pixelShader));
-	ps->Release();
-
-	TestVertex vertices[] =
-	{
-		{ XMFLOAT3(0.0f,0.0f,0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-		{ XMFLOAT3(0.0f,0.3f,0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-		{ XMFLOAT3(0.3f,0.0f,0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) }
-	};
-
-	D3D11_BUFFER_DESC vbd;
-	vbd.Usage = D3D11_USAGE_IMMUTABLE;
-	vbd.ByteWidth = sizeof(TestVertex) * 3;
-	vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	vbd.CPUAccessFlags = 0;
-	vbd.MiscFlags = 0;
-	vbd.StructureByteStride = 0;
-
-	D3D11_SUBRESOURCE_DATA vbdata;
-	vbdata.pSysMem = vertices;
-	vbdata.SysMemPitch = 0;
-	vbdata.SysMemSlicePitch = 0;
-
-	device->CreateBuffer(&vbd, &vbdata, &(testConfiguration.vertexBuffer));
-
-	UINT indices[] = { 0, 1, 2 };
-
-	D3D11_BUFFER_DESC ibd;
-	ibd.Usage = D3D11_USAGE_IMMUTABLE;
-	ibd.ByteWidth = sizeof(UINT) * 3;
-	ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibd.CPUAccessFlags = 0;
-	ibd.MiscFlags = 0;
-
-	D3D11_SUBRESOURCE_DATA ibdata;
-	ibdata.pSysMem = indices;
-	ibdata.SysMemPitch = 0;
-	ibdata.SysMemSlicePitch = 0;
-
-	device->CreateBuffer(&ibd, &ibdata, &(testConfiguration.indexBuffer));
+	colorTest->CreateObject(device, vertexData, 3, indexData, 6);
 }
