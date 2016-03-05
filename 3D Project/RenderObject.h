@@ -3,6 +3,7 @@
 
 #include <DirectXMath.h>
 #include "VertexStructureDefinitions.h"
+#include "Model.h"
 
 using namespace DirectX;
 
@@ -13,18 +14,16 @@ public:
 	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize);
 	~RenderObject();
 
-	static RenderObject* CreateRenderObject(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize);
+	static RenderObject* CreateRenderObject(ID3D11Device* device, Model* model);
 
 	XMFLOAT4X4 worldMatrix;
 
 private:
 	UINT32 vertexBufferOffset;
 
-	ID3D11Buffer* vertexBuffer;
-	ID3D11Buffer* indexBuffer;
-	UINT numIndices;
+	Model* model;
 
-	RenderObject(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize);
+	RenderObject(ID3D11Device* device, Model* model);
 };
 
 #endif

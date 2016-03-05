@@ -266,5 +266,7 @@ void createTestInput()
 		L"",
 		L"TestPixel.hlsl");
 
-	colorTest->CreateObject(device, vertexData, 3, indexData, 6);
+	colorTest->CreateModel(device, vertexData, 3, indexData, 6);
+
+	colorTest->CreateObject(device, colorTest->models[0]);
 }

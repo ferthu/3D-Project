@@ -150,6 +150,13 @@ RenderConfiguration::~RenderConfiguration()
 		delete objects.back();
 		objects.pop_back();
 	}
+
+	int modelsSize = models.size();
+	for (int i = 0; i < modelsSize; i++)
+	{
+		delete models[i];
+	}
+	models.clear();
 }
 
 RenderConfiguration* RenderConfiguration::CreateRenderConfiguration(ID3D11Device* device,
@@ -197,7 +204,12 @@ void RenderConfiguration::Render(ID3D11DeviceContext* deviceContext)
 	}
 }
 
-void RenderConfiguration::CreateObject(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices)
+void RenderConfiguration::CreateObject(ID3D11Device* device, Model* model)
 {
-	objects.push_back(RenderObject::CreateRenderObject(device, vertexData, numVertices, indexData, numIndices, vertexSize));
+	objects.push_back(RenderObject::CreateRenderObject(device, model));
+}
+
+void RenderConfiguration::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices)
+{
+	models.push_back(Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, vertexSize));
 }

@@ -4,7 +4,9 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <list>
+#include <vector>
 #include "RenderObject.h"
+#include "Model.h"
 
 struct VertexElementDescription
 {
@@ -18,7 +20,8 @@ class RenderConfiguration
 public:
 	void Update();
 	void Render(ID3D11DeviceContext* deviceContext);
-	void CreateObject(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices);
+	void CreateObject(ID3D11Device* device, Model* model);
+	void CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices);
 
 	static RenderConfiguration* CreateRenderConfiguration(ID3D11Device* device,
 		ID3D11DeviceContext* deviceContext,
@@ -28,6 +31,8 @@ public:
 		LPCWSTR geometryShaderName,
 		LPCWSTR pixelShaderName);
 	~RenderConfiguration();
+
+	std::vector<Model*> models;
 
 private:
 	UINT vertexNumElements;
