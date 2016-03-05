@@ -263,7 +263,7 @@ void createTestInput()
 		2,
 		colorVertexDescription,
 		L"TestVertex.hlsl",
-		L"",
+		L"TestGeometry.hlsl",
 		L"TestPixel.hlsl");
 
 	colorTest->CreateModel(device, vertexData, 3, indexData, 6);

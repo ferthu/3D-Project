@@ -49,5 +49,8 @@
     <FxCompile Include="TestPixel.hlsl">
       <Filter>Source Files</Filter>
     </FxCompile>
+    <FxCompile Include="TestGeometry.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
