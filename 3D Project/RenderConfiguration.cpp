@@ -10,7 +10,8 @@ RenderConfiguration::RenderConfiguration(
 	VertexElementDescription* elementsDescription,
 	LPCWSTR vertexShaderName,
 	LPCWSTR geometryShaderName,		// pass empty string to disable
-	LPCWSTR pixelShaderName)
+	LPCWSTR pixelShaderName,
+	Camera* camera)
 {
 	// set variables to default values
 	inputLayout = nullptr;
@@ -19,6 +20,8 @@ RenderConfiguration::RenderConfiguration(
 	vertexShader = nullptr;
 	geometryShader = nullptr;
 	pixelShader = nullptr;
+
+	this->camera = camera;
 
 #pragma region input layout
 	// set up input layout
@@ -165,9 +168,10 @@ RenderConfiguration* RenderConfiguration::CreateRenderConfiguration(ID3D11Device
 	VertexElementDescription* elementsDescription,
 	LPCWSTR vertexShaderName,
 	LPCWSTR geometryShaderName,
-	LPCWSTR pixelShaderName)
+	LPCWSTR pixelShaderName,
+	Camera* camera)
 {
-	return new RenderConfiguration(device, deviceContext, elementsPerVertex, elementsDescription, vertexShaderName, geometryShaderName, pixelShaderName);
+	return new RenderConfiguration(device, deviceContext, elementsPerVertex, elementsDescription, vertexShaderName, geometryShaderName, pixelShaderName, camera);
 }
 
 void RenderConfiguration::Update()
@@ -193,6 +197,10 @@ void RenderConfiguration::Render(ID3D11DeviceContext* deviceContext)
 
 	deviceContext->IASetInputLayout(inputLayout);
 	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	ID3D11Buffer* viewProjectionMatrices[] = { (camera->viewMatrixBuffer), (camera->projectionMatrixBuffer) };
+
+	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);
 
 	// render every object
 	std::list<RenderObject*>::iterator it = objects.begin();

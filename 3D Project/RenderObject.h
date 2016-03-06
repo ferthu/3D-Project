@@ -16,10 +16,15 @@ public:
 
 	static RenderObject* CreateRenderObject(ID3D11Device* device, Model* model);
 
-	XMFLOAT4X4 worldMatrix;
+	XMMATRIX& GetWorldMatrix();
+	void SetWorldMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX worldMatrix);
+
+	ID3D11Buffer* worldMatrixBuffer;
 
 private:
 	UINT32 vertexBufferOffset;
+
+	XMFLOAT4X4 worldMatrix;
 
 	Model* model;
 

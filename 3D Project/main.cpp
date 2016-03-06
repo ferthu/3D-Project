@@ -34,6 +34,7 @@ ID3D11DepthStencilView* depthView;
 #pragma endregion
 
 RenderConfiguration* colorTest;
+Camera* testCam;
 
 // declare window procedure function
 LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
@@ -95,6 +96,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 
 	// release resources
 	delete colorTest;
+	delete testCam;
+
 	device->Release();
 	deviceContext->Release();
 	swapChain->Release();
@@ -257,6 +260,9 @@ void createTestInput()
 
 	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
 
+	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	testCam = Camera::CreateCamera(device, XM_PIDIV2, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 0.9f, -XM_PIDIV2 * 0.9, windowWidth / windowHeight);
+
 	colorTest = RenderConfiguration::CreateRenderConfiguration(
 		device,
 		deviceContext,
@@ -264,7 +270,8 @@ void createTestInput()
 		colorVertexDescription,
 		L"TestVertex.hlsl",
 		L"TestGeometry.hlsl",
-		L"TestPixel.hlsl");
+		L"TestPixel.hlsl",
+		testCam);
 
 	colorTest->CreateModel(device, vertexData, 3, indexData, 6);
 

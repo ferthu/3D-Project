@@ -7,6 +7,7 @@
 #include <vector>
 #include "RenderObject.h"
 #include "Model.h"
+#include "Camera.h"
 
 struct VertexElementDescription
 {
@@ -29,9 +30,11 @@ public:
 		VertexElementDescription* elementsDescription,
 		LPCWSTR vertexShaderName,
 		LPCWSTR geometryShaderName,
-		LPCWSTR pixelShaderName);
+		LPCWSTR pixelShaderName,
+		Camera* camera);
 	~RenderConfiguration();
 
+	Camera* camera;
 	std::vector<Model*> models;
 
 private:
@@ -52,7 +55,8 @@ private:
 		VertexElementDescription* elementsDescription,
 		LPCWSTR vertexShaderName,
 		LPCWSTR geometryShaderName,
-		LPCWSTR pixelShaderName);
+		LPCWSTR pixelShaderName,
+		Camera* camera);
 };
 
 #endif
