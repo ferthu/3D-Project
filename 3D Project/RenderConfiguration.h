@@ -36,6 +36,7 @@ public:
 
 	Camera* camera;
 	std::vector<Model*> models;
+	std::list<RenderObject*> objects;
 
 private:
 	UINT vertexNumElements;
@@ -46,8 +47,6 @@ private:
 	ID3D11VertexShader* vertexShader;
 	ID3D11GeometryShader* geometryShader;
 	ID3D11PixelShader* pixelShader;
-
-	std::list<RenderObject*> objects;
 
 	RenderConfiguration(ID3D11Device* device,
 		ID3D11DeviceContext* deviceContext,

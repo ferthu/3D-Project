@@ -15,6 +15,9 @@ public:
 	XMMATRIX& GetProjectionMatrix();
 	void SetProjectionMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX worldMatrix);
 
+	XMMATRIX CreateViewMatrix(FXMVECTOR position, float pitch, float yaw);
+	XMMATRIX CreateProjectionMatrix(float horizontalFOV, float nearPlaneDistance, float farPlaneDistance);
+
 	ID3D11Buffer* viewMatrixBuffer;
 	ID3D11Buffer* projectionMatrixBuffer;
 
@@ -25,14 +28,11 @@ public:
 	float yaw;
 	XMFLOAT3 position;
 
-	static Camera* CreateCamera(ID3D11Device* device, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio);
+	static Camera* CreateCamera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio);
 	~Camera();
 
 private:
-	Camera(ID3D11Device* device, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio);
-
-	XMMATRIX CreateViewMatrix(FXMVECTOR position, float pitch, float yaw);
-	XMMATRIX CreateProjectionMatrix(float horizontalFOV, float nearPlaneDistance, float farPlaneDistance);
+	Camera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio);
 
 	float aspectRatio;
 	float pitchUpperLimit;

@@ -35,6 +35,7 @@ ID3D11DepthStencilView* depthView;
 
 RenderConfiguration* colorTest;
 Camera* testCam;
+float camYaw = 0.0f;
 
 // declare window procedure function
 LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
@@ -223,7 +224,11 @@ void initializeD3D()
 
 void Update()
 {
-	
+	camYaw += 0.0001f;
+
+	XMFLOAT3 pos = XMFLOAT3(0.0f, 0.0f, -2.0f);
+
+	colorTest->camera->SetViewMatrix(deviceContext, colorTest->camera->CreateViewMatrix(XMLoadFloat3(&pos), -camYaw, camYaw));
 }
 
 void Render()
@@ -254,14 +259,14 @@ void createTestInput()
 	ColorVertex vertexData[3] = 
 	{
 		{ XMFLOAT3(0.0f, 0.0f, 0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-		{ XMFLOAT3(-0.1f, 0.5f, 0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-		{ XMFLOAT3(0.3f, 0.0f, 0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f) }
+		{ XMFLOAT3(0.0f, 0.5f, 0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+		{ XMFLOAT3(0.5f, 0.0f, 0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f) }
 	};
 
 	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
 
-	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	testCam = Camera::CreateCamera(device, XM_PIDIV2, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 0.9f, -XM_PIDIV2 * 0.9, windowWidth / windowHeight);
+	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, -2.0f);
+	testCam = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 0.05f, -XM_PIDIV2 * 0.05f, ((float)windowHeight) / ((float)windowWidth));
 
 	colorTest = RenderConfiguration::CreateRenderConfiguration(
 		device,
@@ -276,4 +281,11 @@ void createTestInput()
 	colorTest->CreateModel(device, vertexData, 3, indexData, 6);
 
 	colorTest->CreateObject(device, colorTest->models[0]);
+
+	XMMATRIX world = XMMATRIX(1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1);
+
+	colorTest->objects.front()->SetWorldMatrix(deviceContext, world);
 }

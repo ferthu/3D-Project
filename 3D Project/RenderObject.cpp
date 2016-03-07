@@ -13,7 +13,7 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 	deviceContext->IASetIndexBuffer(model->indexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
 	// set constant buffer
-	deviceContext->VSSetConstantBuffers(0, 1, &worldMatrixBuffer);
+	deviceContext->VSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
 
 	// render
 	deviceContext->DrawIndexed(model->numIndices, 0, 0);
@@ -63,5 +63,14 @@ void RenderObject::SetWorldMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX 
 {
 	XMStoreFloat4x4(&(this->worldMatrix), worldMatrix);
 
-	deviceContext->UpdateSubresource(worldMatrixBuffer, 0, NULL,  &(this->worldMatrix), sizeof(this->worldMatrix), sizeof(this->worldMatrix));
+	D3D11_MAPPED_SUBRESOURCE resource;
+	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+	deviceContext->Map(worldMatrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+
+	XMMATRIX transposed = XMMatrixTranspose(XMLoadFloat4x4(&(this->worldMatrix)));		// transpose because HLSL expects column major
+
+	memcpy(resource.pData, &(transposed), sizeof(transposed));
+
+	deviceContext->Unmap(worldMatrixBuffer, 0);
 }

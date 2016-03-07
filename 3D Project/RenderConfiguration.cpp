@@ -200,7 +200,7 @@ void RenderConfiguration::Render(ID3D11DeviceContext* deviceContext)
 
 	ID3D11Buffer* viewProjectionMatrices[] = { (camera->viewMatrixBuffer), (camera->projectionMatrixBuffer) };
 
-	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);
+	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);		// slot 1 view matrix, slot 2 projection matrix
 
 	// render every object
 	std::list<RenderObject*>::iterator it = objects.begin();

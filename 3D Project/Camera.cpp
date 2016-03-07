@@ -10,7 +10,16 @@ void Camera::SetViewMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX viewMat
 {
 	XMStoreFloat4x4(&(this->viewMatrix), viewMatrix);
 
-	deviceContext->UpdateSubresource(viewMatrixBuffer, 0, NULL, &(this->viewMatrix), sizeof(this->viewMatrix), sizeof(this->viewMatrix));
+	D3D11_MAPPED_SUBRESOURCE resource;
+	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+	deviceContext->Map(viewMatrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+
+	XMMATRIX transposed = XMMatrixTranspose(XMLoadFloat4x4(&(this->viewMatrix)));		// transpose because HLSL expects column major
+
+	memcpy(resource.pData, &(transposed), sizeof(transposed));
+
+	deviceContext->Unmap(viewMatrixBuffer, 0);
 }
 
 XMMATRIX& Camera::GetProjectionMatrix()
@@ -22,15 +31,24 @@ void Camera::SetProjectionMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX p
 {
 	XMStoreFloat4x4(&(this->projectionMatrix), projectionMatrix);
 
-	deviceContext->UpdateSubresource(projectionMatrixBuffer, 0, NULL, &(this->projectionMatrix), sizeof(this->projectionMatrix), sizeof(this->projectionMatrix));
+	D3D11_MAPPED_SUBRESOURCE resource;
+	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+	deviceContext->Map(projectionMatrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+
+	XMMATRIX transposed = XMMatrixTranspose(XMLoadFloat4x4(&(this->projectionMatrix)));		// transpose because HLSL expects column major
+
+	memcpy(resource.pData, &(transposed), sizeof(transposed));
+
+	deviceContext->Unmap(projectionMatrixBuffer, 0);
 }
 
-Camera* Camera::CreateCamera(ID3D11Device* device, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio)
+Camera* Camera::CreateCamera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio)
 {
-	return new Camera(device, horizontalFOV, nearPlaneDistance, farPlaneDistance, position, pitch, yaw, pitchUpperLimit, pitchLowerLimit, aspectRatio);
+	return new Camera(device, deviceContext, horizontalFOV, nearPlaneDistance, farPlaneDistance, position, pitch, yaw, pitchUpperLimit, pitchLowerLimit, aspectRatio);
 }
 
-Camera::Camera(ID3D11Device* device, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio)
+Camera::Camera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio)
 {
 	this->horizontalFOV = horizontalFOV;
 	this->nearPlaneDistance = nearPlaneDistance;
@@ -81,6 +99,9 @@ Camera::Camera(ID3D11Device* device, float horizontalFOV, float nearPlaneDistanc
 
 	// create projection matrix buffer
 	device->CreateBuffer(&projectionMatrixBufferDescription, &projectionMatrixBufferData, &projectionMatrixBuffer);
+
+	SetViewMatrix(deviceContext, XMLoadFloat4x4(&viewMatrix));
+	SetProjectionMatrix(deviceContext, XMLoadFloat4x4(&projectionMatrix));
 }
 
 Camera::~Camera()
