@@ -3,6 +3,10 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
+
+#include <sstream>
+#include <Mmsystem.h>
+
 #include "RenderConfiguration.h"
 #include "RenderObject.h"
 #include "VertexStructureDefinitions.h"
@@ -31,6 +35,11 @@ ID3D11DeviceContext* deviceContext = nullptr;
 IDXGISwapChain* swapChain = nullptr;
 ID3D11RenderTargetView* backBufferRenderTargetView;
 ID3D11DepthStencilView* depthView;
+
+LARGE_INTEGER countFrequency;
+LARGE_INTEGER currentTime, previousTime, elapsedTime;
+double frameTime;
+
 #pragma endregion
 
 RenderConfiguration* colorTest;
@@ -44,6 +53,7 @@ void initializeD3D();
 void Update();
 void Render();
 void createTestInput();
+void UpdateFrameTime();
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
 {
@@ -71,6 +81,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	UpdateWindow(windowHandle);
 #pragma endregion
 
+	QueryPerformanceFrequency(&countFrequency);
+	QueryPerformanceCounter(&currentTime);
+	previousTime = currentTime;
+	
 	initializeD3D();
 
 	createTestInput();
@@ -224,11 +238,28 @@ void initializeD3D()
 
 void Update()
 {
-	camYaw += 0.0001f;
+	UpdateFrameTime();
+
+	camYaw += 1.0 * frameTime;
 
 	XMFLOAT3 pos = XMFLOAT3(0.0f, 0.0f, -2.0f);
 
 	colorTest->camera->SetViewMatrix(deviceContext, colorTest->camera->CreateViewMatrix(XMLoadFloat3(&pos), -camYaw, camYaw));
+}
+
+void UpdateFrameTime()
+{
+	QueryPerformanceCounter(&currentTime);
+
+	elapsedTime.QuadPart = currentTime.QuadPart - previousTime.QuadPart;
+	frameTime = elapsedTime.QuadPart;
+	frameTime /= countFrequency.QuadPart;
+
+	previousTime = currentTime;
+
+	std::wostringstream strs;
+	strs << "3D Project | " << frameTime * 1000 << " ms | " << 1.0 / frameTime << " fps";
+	SetWindowText(windowHandle, strs.str().c_str());
 }
 
 void Render()
