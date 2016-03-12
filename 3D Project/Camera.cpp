@@ -126,7 +126,8 @@ XMMATRIX Camera::CreateViewMatrix(FXMVECTOR position, float pitch, float yaw)
 	XMFLOAT4 pos = XMFLOAT4(-position.m128_f32[0], -position.m128_f32[1], -position.m128_f32[2], 1.0f);
 	view.r[3] = XMLoadFloat4(&pos);
 
-	view *= XMMatrixRotationRollPitchYaw(-pitch, -yaw, 0);
+	view *= XMMatrixRotationRollPitchYaw(0, -yaw, 0);
+	view *= XMMatrixRotationRollPitchYaw(-pitch, 0, 0);
 
 	return view;
 }

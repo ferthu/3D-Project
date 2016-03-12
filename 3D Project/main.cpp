@@ -3,9 +3,9 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
+#include <cmath>
 
 #include <sstream>
-#include <Mmsystem.h>
 
 #include "RenderConfiguration.h"
 #include "RenderObject.h"
@@ -40,6 +40,9 @@ LARGE_INTEGER countFrequency;
 LARGE_INTEGER currentTime, previousTime, elapsedTime;
 double frameTime;
 
+POINT currentMousePosition;
+POINT previousMousePosition;
+float mouseSensitivity = 0.003f;
 #pragma endregion
 
 RenderConfiguration* colorTest;
@@ -84,6 +87,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	QueryPerformanceFrequency(&countFrequency);
 	QueryPerformanceCounter(&currentTime);
 	previousTime = currentTime;
+
+	GetCursorPos(&currentMousePosition);
+	previousMousePosition = currentMousePosition;
 	
 	initializeD3D();
 
@@ -128,8 +134,15 @@ LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPAR
 	switch (message)
 	{
 	case WM_KEYDOWN:
-		if (wParam == VK_ESCAPE)
+		switch (wParam)
+		{
+		case VK_ESCAPE:
 			DestroyWindow(windowHandle);
+			break;
+		}
+		return 0;
+
+	case WM_KEYUP:
 		return 0;
 
 	case WM_DESTROY:
@@ -240,11 +253,39 @@ void Update()
 {
 	UpdateFrameTime();
 
-	camYaw += 1.0 * frameTime;
+	GetCursorPos(&currentMousePosition);
 
-	XMFLOAT3 pos = XMFLOAT3(0.0f, 0.0f, -2.0f);
+	colorTest->camera->yaw += (currentMousePosition.x - previousMousePosition.x) * mouseSensitivity;
+	colorTest->camera->pitch += (currentMousePosition.y - previousMousePosition.y) * mouseSensitivity;
 
-	colorTest->camera->SetViewMatrix(deviceContext, colorTest->camera->CreateViewMatrix(XMLoadFloat3(&pos), -camYaw, camYaw));
+	XMFLOAT3 ct = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	XMVECTOR cameraTranslation = XMLoadFloat3(&ct);
+
+	XMFLOAT3 cameraX = XMFLOAT3(cosf(colorTest->camera->yaw) * frameTime, 0.0f, -sinf(colorTest->camera->yaw) * frameTime);
+	XMFLOAT3 cameraZ = XMFLOAT3(sinf(colorTest->camera->yaw) * frameTime, 0.0f, cosf(colorTest->camera->yaw) * frameTime);
+
+	if (GetKeyState('W') & 0x8000)	// highest bit set to 1 means key is pressed
+		cameraTranslation += XMLoadFloat3(&cameraZ);
+
+	if (GetKeyState('S') & 0x8000)
+		cameraTranslation -= XMLoadFloat3(&cameraZ);
+
+	if (GetKeyState('D') & 0x8000)
+		cameraTranslation += XMLoadFloat3(&cameraX);
+
+	if (GetKeyState('A') & 0x8000)
+		cameraTranslation -= XMLoadFloat3(&cameraX);
+
+	XMVector3Normalize(cameraTranslation);
+
+	XMVECTOR newPos = XMLoadFloat3(&(colorTest->camera->position)) + cameraTranslation;
+
+	XMStoreFloat3(&(colorTest->camera->position), newPos);
+
+	colorTest->camera->SetViewMatrix(deviceContext, colorTest->camera->CreateViewMatrix(XMLoadFloat3(&(colorTest->camera->position)), colorTest->camera->pitch, colorTest->camera->yaw));
+
+
+	previousMousePosition = currentMousePosition;
 }
 
 void UpdateFrameTime()
@@ -297,7 +338,7 @@ void createTestInput()
 	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
 
 	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, -2.0f);
-	testCam = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 0.05f, -XM_PIDIV2 * 0.05f, ((float)windowHeight) / ((float)windowWidth));
+	testCam = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
 
 	colorTest = RenderConfiguration::CreateRenderConfiguration(
 		device,
