@@ -6,6 +6,8 @@
 #include <cmath>
 
 #include <sstream>
+#include <iostream>
+#include <fstream>
 
 #include "RenderConfiguration.h"
 #include "RenderObject.h"
@@ -46,6 +48,7 @@ float mouseSensitivity = 0.003f;
 #pragma endregion
 
 RenderConfiguration* colorTest;
+RenderConfiguration* texUVTest;
 Camera* testCam;
 float camYaw = 0.0f;
 
@@ -55,8 +58,9 @@ LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPAR
 void initializeD3D();
 void Update();
 void Render();
-void createTestInput();
+void CreateTestInput();
 void UpdateFrameTime();
+void CreateTestModel();
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
 {
@@ -93,7 +97,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	
 	initializeD3D();
 
-	createTestInput();
+	CreateTestInput();
+	CreateTestModel();
 
 	// main loop
 	MSG msg = { 0 };
@@ -313,12 +318,13 @@ void Render()
 	deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
 	colorTest->Render(deviceContext);
+	texUVTest->Render(deviceContext);
 
 	// display frame
 	swapChain->Present(0, 0);
 }
 
-void createTestInput()
+void CreateTestInput()
 {
 	VertexElementDescription colorVertexDescription[2];
 	colorVertexDescription[0].semanticName = "POSITION";
@@ -360,4 +366,176 @@ void createTestInput()
 		0, 0, 0, 1);
 
 	colorTest->objects.front()->SetWorldMatrix(deviceContext, world);
+
+	VertexElementDescription texUVVertexDescription[3];
+	texUVVertexDescription[0].semanticName = "POSITION";
+	texUVVertexDescription[0].semanticIndex = 0;
+	texUVVertexDescription[0].vec4 = false;
+	texUVVertexDescription[1].semanticName = "NORMAL";
+	texUVVertexDescription[1].semanticIndex = 0;
+	texUVVertexDescription[1].vec4 = false;
+	texUVVertexDescription[2].semanticName = "TEXCOORD";
+	texUVVertexDescription[2].semanticIndex = 0;
+	texUVVertexDescription[2].vec4 = false;
+
+	texUVTest = RenderConfiguration::CreateRenderConfiguration(
+		device,
+		deviceContext,
+		3,
+		texUVVertexDescription,
+		L"TestVertex2.hlsl",
+		L"",
+		L"TestPixel2.hlsl",
+		testCam);
+}
+
+void CreateTestModel()
+{
+	std::ifstream modelFile("box.obj");
+
+	std::string str;
+
+	std::vector<XMFLOAT3> positions;
+	std::vector<XMFLOAT3> normals;
+	std::vector<XMFLOAT3> uvs;
+	std::vector<UINT> indices;
+	std::vector<XMINT3> vertexElementIndices;
+
+	int positionsNum = 0;
+	int normalsNum = 0;
+	int uvsNum = 0;
+
+	modelFile >> str;
+
+	while (!modelFile.eof())
+	{
+		if (str == "v")		// vertex position
+		{
+			if (positions.size() <= positionsNum)
+			{
+				positions.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			positions[positionsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			positions[positionsNum].y = std::stof(str, nullptr);
+
+			modelFile >> str;
+			positions[positionsNum].z = std::stof(str, nullptr);
+
+			positionsNum++;
+		}
+		else if (str == "vn")	// vertex normal
+		{
+			if (normals.size() <= normalsNum)
+			{
+				normals.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			normals[normalsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			normals[normalsNum].y = std::stof(str, nullptr);
+
+			modelFile >> str;
+			normals[normalsNum].z = std::stof(str, nullptr);
+
+			normalsNum++;
+		}
+		else if (str == "vt")	// vertex UV
+		{
+			if (uvs.size() <= uvsNum)
+			{
+				uvs.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			uvs[uvsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			uvs[uvsNum].y = std::stof(str, nullptr);
+
+			uvs[uvsNum].z = 0;
+
+			uvsNum++;
+		}
+		else if (str == "f")
+		{
+			XMINT3 elementIndices;
+
+			char temp[10];
+
+			for (int i = 0; i < 3; i++)
+			{
+				modelFile.get(temp, 10, '/');
+				str = temp;
+				elementIndices.x = std::stoi(str);
+				modelFile.get();
+
+				modelFile.get(temp, 10, '/');
+				str = temp;
+				elementIndices.y = std::stoi(str);
+				modelFile.get();
+
+				modelFile >> str;
+				elementIndices.z = std::stoi(str);
+
+				int foundIndex = -1;
+
+				for (int i = 0; i < vertexElementIndices.size(); i++)
+				{
+					if (vertexElementIndices[i].x == elementIndices.x &&
+						vertexElementIndices[i].y == elementIndices.y &&
+						vertexElementIndices[i].z == elementIndices.z)
+					{
+						foundIndex = i;
+						break;
+					}
+				}
+
+				if (foundIndex != -1)	// found in vertexElementIndices
+				{
+					indices.push_back(foundIndex);
+				}
+				else	// not found
+				{
+					vertexElementIndices.push_back(elementIndices);
+					indices.push_back(vertexElementIndices.size() - 1);
+				}
+			}
+		}
+		else	// discard
+		{
+			std::getline(modelFile, str);	
+		}
+		
+		modelFile >> str;
+	}
+
+	NormalUVVertex* vertices = new NormalUVVertex[vertexElementIndices.size()];
+
+	for (int i = 0; i < vertexElementIndices.size(); i++)
+	{
+		vertices[i].position = positions[vertexElementIndices[i].x - 1];
+		vertices[i].UV = uvs[vertexElementIndices[i].y - 1];
+		vertices[i].normal = normals[vertexElementIndices[i].z - 1];
+	}
+
+	UINT* indexArray = new UINT[indices.size()];
+
+	for (int i = 0; i < indices.size(); i++)
+	{
+		indexArray[i] = indices[i];
+	}
+
+	texUVTest->CreateModel(device, vertices, vertexElementIndices.size(), indexArray, indices.size());
+	texUVTest->CreateObject(device, texUVTest->models[0]);
+
+	delete[] vertices;
+	delete[] indexArray;
+
+	modelFile.close();
 }
