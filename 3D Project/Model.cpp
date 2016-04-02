@@ -1,14 +1,15 @@
 #include "Model.h"
 
-Model* Model::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize)
+Model* Model::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize, Texture* texture)
 {
-	return new Model(device, vertexData, numVertices, indexData, numIndices, vertexSize);
+	return new Model(device, vertexData, numVertices, indexData, numIndices, vertexSize, texture);
 }
 
-Model::Model(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize)
+Model::Model(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, UINT vertexSize, Texture* texture)
 {
 	this->numIndices = numIndices;
 	this->numVertices = numVertices;
+	this->texture = texture;
 
 	// create description of vertex buffer
 	D3D11_BUFFER_DESC vertexBufferDescription;

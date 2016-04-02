@@ -12,8 +12,9 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 	deviceContext->IASetVertexBuffers(0, 1, &(model->vertexBuffer), vertexSize, &vertexBufferOffset);
 	deviceContext->IASetIndexBuffer(model->indexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-	// set constant buffer
+	// set constant buffers
 	deviceContext->VSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
+	deviceContext->PSSetShaderResources(0, 1, &(model->texture->textureView));
 
 	// render
 	deviceContext->DrawIndexed(model->numIndices, 0, 0);

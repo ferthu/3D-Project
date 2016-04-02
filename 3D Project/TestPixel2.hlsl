@@ -5,9 +5,12 @@ struct VSoutput
 	float3 uv : TEXCOORD;
 };
 
+Texture2D tex : register(t0);
+SamplerState samp;
+
 float4 PSmain(VSoutput input) : SV_Target
 {
-	float4 outColor = float4(1, 1, 1, 1);
+	float4 outColor = float4(tex.Sample(samp, input.uv).xyz, 1);
 
 	return outColor;
 }

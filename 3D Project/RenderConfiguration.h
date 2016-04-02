@@ -22,7 +22,7 @@ public:
 	void Update();
 	void Render(ID3D11DeviceContext* deviceContext);
 	void CreateObject(ID3D11Device* device, Model* model);
-	void CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices);
+	void CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, Texture* texture);
 
 	static RenderConfiguration* CreateRenderConfiguration(ID3D11Device* device,
 		ID3D11DeviceContext* deviceContext,

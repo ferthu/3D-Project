@@ -217,7 +217,7 @@ void RenderConfiguration::CreateObject(ID3D11Device* device, Model* model)
 	objects.push_back(RenderObject::CreateRenderObject(device, model));
 }
 
-void RenderConfiguration::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices)
+void RenderConfiguration::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, Texture* texture)
 {
-	models.push_back(Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, vertexSize));
+	models.push_back(Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, vertexSize, texture));
 }

@@ -12,6 +12,7 @@
 #include "RenderConfiguration.h"
 #include "RenderObject.h"
 #include "VertexStructureDefinitions.h"
+#include "Texture.h"
 
 using namespace DirectX;
 
@@ -49,8 +50,8 @@ float mouseSensitivity = 0.003f;
 
 RenderConfiguration* colorTest;
 RenderConfiguration* texUVTest;
-Camera* testCam;
-float camYaw = 0.0f;
+Texture* testTexture = nullptr;
+Camera* testCam = nullptr;
 
 // declare window procedure function
 LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
@@ -97,6 +98,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	
 	initializeD3D();
 
+	testTexture = Texture::CreateTexture(device, "test4.tga");
+
 	CreateTestInput();
 	CreateTestModel();
 
@@ -123,6 +126,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	// release resources
 	delete colorTest;
 	delete testCam;
+	delete testTexture;
 
 	device->Release();
 	deviceContext->Release();
@@ -311,7 +315,7 @@ void UpdateFrameTime()
 void Render()
 {
 	// clear window to background color
-	float backgroundColor[] = {0, 0, 0, 1};
+	float backgroundColor[] = {0, 0, 0.2f, 1};
 	deviceContext->ClearRenderTargetView(backBufferRenderTargetView, backgroundColor);
 
 	// clear depth buffer
@@ -356,7 +360,7 @@ void CreateTestInput()
 		L"TestPixel.hlsl",
 		testCam);
 
-	colorTest->CreateModel(device, vertexData, 3, indexData, 6);
+	colorTest->CreateModel(device, vertexData, 3, indexData, 6, testTexture);
 
 	colorTest->CreateObject(device, colorTest->models[0]);
 
@@ -531,7 +535,7 @@ void CreateTestModel()
 		indexArray[i] = indices[i];
 	}
 
-	texUVTest->CreateModel(device, vertices, vertexElementIndices.size(), indexArray, indices.size());
+	texUVTest->CreateModel(device, vertices, vertexElementIndices.size(), indexArray, indices.size(), testTexture);
 	texUVTest->CreateObject(device, texUVTest->models[0]);
 
 	delete[] vertices;
