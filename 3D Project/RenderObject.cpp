@@ -15,7 +15,9 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 	// set constant buffers
 	deviceContext->VSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
 	deviceContext->GSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
-	deviceContext->PSSetShaderResources(0, 1, &(model->texture->textureView));
+
+	if (model->texture != nullptr)
+		deviceContext->PSSetShaderResources(0, 1, &(model->texture->textureView));
 
 	// render
 	deviceContext->DrawIndexed(model->numIndices, 0, 0);

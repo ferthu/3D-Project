@@ -7,7 +7,7 @@ Texture::Texture(ID3D11Device* device, UINT height, UINT width, const void* data
 	textureDescription.ArraySize = 1;
 	textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	textureDescription.CPUAccessFlags = 0;
-	textureDescription.Format = DXGI_FORMAT_R32G32B32_FLOAT;
+	textureDescription.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	textureDescription.Height = height;
 	textureDescription.Width = width;
 	textureDescription.MipLevels = 1;
@@ -18,7 +18,7 @@ Texture::Texture(ID3D11Device* device, UINT height, UINT width, const void* data
 
 	D3D11_SUBRESOURCE_DATA textureData;
 	textureData.pSysMem = dataLocation;
-	textureData.SysMemPitch = width * 3 * sizeof(float);
+	textureData.SysMemPitch = width * 4 * sizeof(float);
 	textureData.SysMemSlicePitch = 0;
 	
 	device->CreateTexture2D(&textureDescription, &textureData, &texture);
@@ -51,7 +51,7 @@ Texture* Texture::CreateTexture(ID3D11Device* device, const char* textureFileNam
 	} tgaHeader;
 	typedef struct
 	{
-		float r, g, b;
+		float r, g, b, a;
 	} tgaPixel;
 
 	tgaHeader textureHeader;
@@ -63,7 +63,7 @@ Texture* Texture::CreateTexture(ID3D11Device* device, const char* textureFileNam
 	// read pixel data
 	int column = 0;
 	int row = textureHeader.height - 1;
-	unsigned char readR, readG, readB, discard;
+	unsigned char readR, readG, readB, readA;
 	unsigned char header;
 	while (!textureFile.read((char*)&header, 1).eof())
 	{
@@ -72,13 +72,14 @@ Texture* Texture::CreateTexture(ID3D11Device* device, const char* textureFileNam
 			textureFile.read((char*)&readB, 1);
 			textureFile.read((char*)&readG, 1);
 			textureFile.read((char*)&readR, 1);
-			textureFile.read((char*)&discard, 1);
+			textureFile.read((char*)&readA, 1);
 
 			for (int i = 0; i < (header & 0x7F) + 1; i++)
 			{
 				imageData[row * textureHeader.width + column].r = ((float)readR) / 255;
 				imageData[row * textureHeader.width + column].g = ((float)readG) / 255;
 				imageData[row * textureHeader.width + column].b = ((float)readB) / 255;
+				imageData[row * textureHeader.width + column].a = ((float)readA) / 255;
 
 				column++;
 				if (column >= textureHeader.width)
@@ -95,11 +96,12 @@ Texture* Texture::CreateTexture(ID3D11Device* device, const char* textureFileNam
 				textureFile.read((char*)&readB, 1);
 				textureFile.read((char*)&readG, 1);
 				textureFile.read((char*)&readR, 1);
-				textureFile.read((char*)&discard, 1);
+				textureFile.read((char*)&readA, 1);
 
 				imageData[row * textureHeader.width + column].r = ((float)readR) / 255;
 				imageData[row * textureHeader.width + column].g = ((float)readG) / 255;
 				imageData[row * textureHeader.width + column].b = ((float)readB) / 255;
+				imageData[row * textureHeader.width + column].a = ((float)readA) / 255;
 
 				column++;
 				if (column >= textureHeader.width)

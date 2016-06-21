@@ -13,6 +13,7 @@
 #include "RenderObject.h"
 #include "VertexStructureDefinitions.h"
 #include "Texture.h"
+#include "LightClasses.h"
 
 using namespace DirectX;
 
@@ -29,7 +30,7 @@ UINT windowHeight = 600;
 
 const bool DEBUG = true;
 
-UINT msaaSamples = 8;		// minimum 1
+UINT msaaSamples = 1;		// minimum 1
 
 D3D_FEATURE_LEVEL* featureLevel = nullptr;
 
@@ -48,10 +49,59 @@ POINT previousMousePosition;
 float mouseSensitivity = 0.003f;
 #pragma endregion
 
-RenderConfiguration* colorTest;
 RenderConfiguration* texUVTest;
 Texture* testTexture = nullptr;
 Camera* testCam = nullptr;
+SpotLight* testSpotLight = nullptr;
+PointLight* testPointLight = nullptr;
+DirectionalLight* testDirectionalLight = nullptr;
+
+Camera* mainCamera = nullptr;
+
+Model* boxModel = nullptr;
+RenderObject* boxObject = nullptr;
+Texture* boxTexture = nullptr;
+
+Model* spotLightModel = nullptr;
+Model* pointLightModel = nullptr;
+Model* directionalLightModel = nullptr;
+
+XMVECTOR ambientLightColor;
+ID3D11Buffer* ambientLightColorBuffer;
+
+ID3D11Texture2D* ColorBuffer = nullptr;
+ID3D11RenderTargetView* ColorBufferRenderTargetView = nullptr;
+ID3D11ShaderResourceView* ColorBufferShaderResourceView = nullptr;
+
+ID3D11Texture2D* PositionBuffer = nullptr;
+ID3D11RenderTargetView* PositionBufferRenderTargetView = nullptr;
+ID3D11ShaderResourceView* PositionBufferShaderResourceView = nullptr;
+
+ID3D11Texture2D* NormalBuffer = nullptr;
+ID3D11RenderTargetView* NormalBufferRenderTargetView = nullptr;
+ID3D11ShaderResourceView* NormalBufferShaderResourceView = nullptr;
+
+ID3D11InputLayout* deferredGeometryInputLayout = nullptr;
+ID3D11InputLayout* deferredLightInputLayout = nullptr;
+
+ID3D11VertexShader* deferredGeometryVertexShader = nullptr;
+ID3D11VertexShader* deferredLightVertexShader = nullptr;
+ID3D11GeometryShader* deferredGeometryGeometryShader = nullptr;
+ID3D11GeometryShader* deferredLightGeometryShader = nullptr;
+ID3D11GeometryShader* deferredDirectionalLightGeometryShader = nullptr;
+ID3D11PixelShader* deferredGeometryPixelShader = nullptr;
+ID3D11PixelShader* deferredDirectionalLightPixelShader = nullptr;
+ID3D11PixelShader* deferredSpotLightPixelShader = nullptr;
+ID3D11PixelShader* deferredPointLightPixelShader = nullptr;
+
+ID3D11RasterizerState* deferredGeometryRasterizerState = nullptr;
+ID3D11RasterizerState* deferredLightRasterizerState = nullptr;
+
+ID3D11DepthStencilState* deferredGeometryDepthState = nullptr;
+ID3D11DepthStencilState* deferredLightDepthState = nullptr;
+
+ID3D11BlendState* deferredGeometryBlendState = nullptr;
+ID3D11BlendState* deferredLightBlendState = nullptr;
 
 // declare window procedure function
 LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
@@ -62,6 +112,11 @@ void Render();
 void CreateTestInput();
 void UpdateFrameTime();
 void CreateTestModel();
+void SetupDeferredRendering();
+void RenderDeferredRendering();
+void CreateGBuffer(ID3D11Texture2D** texture, ID3D11RenderTargetView** renderTargetView, ID3D11ShaderResourceView** shaderResourceView);
+void LoadOBJ(std::string fileName, NormalUVVertex*& verticesArray, UINT& numVertices, UINT*& indicesArray, UINT& numIndices);
+void CreateLightGeometry();
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
 {
@@ -98,7 +153,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	
 	initializeD3D();
 
+	SetupDeferredRendering();
+
 	testTexture = Texture::CreateTexture(device, "test4.tga");
+
+	CreateLightGeometry();
 
 	CreateTestInput();
 	CreateTestModel();
@@ -124,14 +183,51 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	}
 
 	// release resources
-	delete colorTest;
+#pragma region delete
 	delete testCam;
 	delete testTexture;
+	delete mainCamera;
+	delete boxModel;
+	delete boxObject;
+	delete boxTexture;
+	delete spotLightModel;
+	delete pointLightModel;
+	delete directionalLightModel;
+	delete testSpotLight;
+	delete testPointLight;
+	delete testDirectionalLight;
 
 	device->Release();
 	deviceContext->Release();
 	swapChain->Release();
 	backBufferRenderTargetView->Release();
+	deferredGeometryRasterizerState->Release();
+	deferredLightRasterizerState->Release();
+	deferredGeometryDepthState->Release();
+	deferredLightDepthState->Release();
+	deferredGeometryVertexShader->Release();
+	deferredLightVertexShader->Release();
+	deferredGeometryGeometryShader->Release();
+	deferredLightGeometryShader->Release();
+	deferredGeometryPixelShader->Release();
+	deferredDirectionalLightPixelShader->Release();
+	deferredSpotLightPixelShader->Release();
+	deferredPointLightPixelShader->Release();
+	ambientLightColorBuffer->Release();
+	ColorBuffer->Release();
+	ColorBufferRenderTargetView->Release();
+	ColorBufferShaderResourceView->Release();
+	PositionBuffer->Release();
+	PositionBufferRenderTargetView->Release();
+	PositionBufferShaderResourceView->Release();
+	NormalBuffer->Release();
+	NormalBufferRenderTargetView->Release();
+	NormalBufferShaderResourceView->Release();
+	deferredGeometryInputLayout->Release();
+	deferredLightInputLayout->Release();
+	deferredGeometryBlendState->Release();
+	deferredLightBlendState->Release();
+#pragma endregion
 
 	// returns parameter of WM_QUIT message
 	return (int)msg.wParam;
@@ -264,14 +360,14 @@ void Update()
 
 	GetCursorPos(&currentMousePosition);
 
-	colorTest->camera->yaw += (currentMousePosition.x - previousMousePosition.x) * mouseSensitivity;
-	colorTest->camera->pitch += (currentMousePosition.y - previousMousePosition.y) * mouseSensitivity;
+	mainCamera->yaw += (currentMousePosition.x - previousMousePosition.x) * mouseSensitivity;
+	mainCamera->pitch += (currentMousePosition.y - previousMousePosition.y) * mouseSensitivity;
 
 	XMFLOAT3 ct = XMFLOAT3(0.0f, 0.0f, 0.0f);
 	XMVECTOR cameraTranslation = XMLoadFloat3(&ct);
 
-	XMFLOAT3 cameraX = XMFLOAT3(cosf(colorTest->camera->yaw) * frameTime, 0.0f, -sinf(colorTest->camera->yaw) * frameTime);
-	XMFLOAT3 cameraZ = XMFLOAT3(sinf(colorTest->camera->yaw) * frameTime, 0.0f, cosf(colorTest->camera->yaw) * frameTime);
+	XMFLOAT3 cameraX = XMFLOAT3(cosf(mainCamera->yaw) * frameTime, 0.0f, -sinf(mainCamera->yaw) * frameTime);
+	XMFLOAT3 cameraZ = XMFLOAT3(sinf(mainCamera->yaw) * frameTime, 0.0f, cosf(mainCamera->yaw) * frameTime);
 
 	if (GetKeyState('W') & 0x8000)	// highest bit set to 1 means key is pressed
 		cameraTranslation += XMLoadFloat3(&cameraZ);
@@ -287,11 +383,11 @@ void Update()
 
 	XMVector3Normalize(cameraTranslation);
 
-	XMVECTOR newPos = XMLoadFloat3(&(colorTest->camera->position)) + cameraTranslation;
+	XMVECTOR newPos = XMLoadFloat3(&(mainCamera->position)) + cameraTranslation * 2;
 
-	XMStoreFloat3(&(colorTest->camera->position), newPos);
+	XMStoreFloat3(&(mainCamera->position), newPos);
 
-	colorTest->camera->SetViewMatrix(deviceContext, colorTest->camera->CreateViewMatrix(XMLoadFloat3(&(colorTest->camera->position)), colorTest->camera->pitch, colorTest->camera->yaw));
+	mainCamera->SetViewMatrix(deviceContext, mainCamera->CreateViewMatrix(XMLoadFloat3(&(mainCamera->position)), mainCamera->pitch, mainCamera->yaw));
 
 
 	previousMousePosition = currentMousePosition;
@@ -315,14 +411,25 @@ void UpdateFrameTime()
 void Render()
 {
 	// clear window to background color
-	float backgroundColor[] = {0, 0, 0.2f, 1};
+	float backgroundColor[4];
+	float black[] = { 0, 0, 0, 1 };
+	
+	// clear geometry buffers
+	XMFLOAT4 ambientColor;
+	XMStoreFloat4(&ambientColor, ambientLightColor);
+	backgroundColor[0] = ambientColor.x;
+	backgroundColor[1] = ambientColor.y;
+	backgroundColor[2] = ambientColor.z;
+	backgroundColor[3] = ambientColor.w;
 	deviceContext->ClearRenderTargetView(backBufferRenderTargetView, backgroundColor);
+	deviceContext->ClearRenderTargetView(ColorBufferRenderTargetView, black);
+	deviceContext->ClearRenderTargetView(PositionBufferRenderTargetView, black);
+	deviceContext->ClearRenderTargetView(NormalBufferRenderTargetView, black);
 
 	// clear depth buffer
 	deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
-	colorTest->Render(deviceContext);
-	texUVTest->Render(deviceContext);
+	RenderDeferredRendering();
 
 	// display frame
 	swapChain->Present(0, 0);
@@ -347,30 +454,6 @@ void CreateTestInput()
 
 	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
 
-	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, -2.0f);
-	testCam = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
-
-	colorTest = RenderConfiguration::CreateRenderConfiguration(
-		device,
-		deviceContext,
-		2,
-		colorVertexDescription,
-		L"TestVertex.hlsl",
-		L"TestGeometry.hlsl",
-		L"TestPixel.hlsl",
-		testCam);
-
-	colorTest->CreateModel(device, vertexData, 3, indexData, 6, testTexture);
-
-	colorTest->CreateObject(device, colorTest->models[0]);
-
-	XMMATRIX world = XMMATRIX(1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1);
-
-	colorTest->objects.front()->SetWorldMatrix(deviceContext, world);
-
 	VertexElementDescription texUVVertexDescription[3];
 	texUVVertexDescription[0].semanticName = "POSITION";
 	texUVVertexDescription[0].semanticIndex = 0;
@@ -391,6 +474,14 @@ void CreateTestInput()
 		L"",
 		L"TestPixel2.hlsl",
 		testCam);
+
+	// create test lights
+	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0, 0, 1, 1), 1, pointLightModel);
+	testPointLight->Initialize();
+	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 0, 1, 0), 1, 1, spotLightModel);
+	testSpotLight->Initialize();
+	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(1, 0, 0, 1), XMFLOAT4(0, 0, -1, 0), directionalLightModel);
+	testDirectionalLight->Initialize();
 }
 
 void CreateTestModel()
@@ -542,4 +633,662 @@ void CreateTestModel()
 	delete[] indexArray;
 
 	modelFile.close();
+}
+
+void SetupDeferredRendering()
+{
+#pragma region input description
+	D3D11_INPUT_ELEMENT_DESC normalMappedVertexInputDescription[] =
+	{ { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  { "TEXCOORDS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+
+	D3D11_INPUT_ELEMENT_DESC lightMeshVertexInputDescription =
+	 { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 };
+#pragma endregion
+
+#pragma region vertex shader, input layout
+	// create geometry vertex shader
+	ID3DBlob* vs = nullptr;
+
+	HRESULT hr = D3DCompileFromFile(
+		L"DeferredGeometryVertex.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"vs_4_0",
+		0, 0,
+		&vs,
+		nullptr);
+
+	device->CreateVertexShader(
+		vs->GetBufferPointer(),
+		vs->GetBufferSize(),
+		nullptr,
+		&deferredGeometryVertexShader);
+
+	// create geometry input layout
+	device->CreateInputLayout(
+		normalMappedVertexInputDescription,
+		3,
+		vs->GetBufferPointer(),
+		vs->GetBufferSize(),
+		&deferredGeometryInputLayout);
+
+	// create light vertex shader
+	hr = D3DCompileFromFile(
+		L"DeferredLightVertex.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"vs_4_0",
+		0, 0,
+		&vs,
+		nullptr);
+
+	device->CreateVertexShader(
+		vs->GetBufferPointer(),
+		vs->GetBufferSize(),
+		nullptr,
+		&deferredLightVertexShader);
+
+	// create light input layout
+	device->CreateInputLayout(
+		&lightMeshVertexInputDescription,
+		1,
+		vs->GetBufferPointer(),
+		vs->GetBufferSize(),
+		&deferredLightInputLayout);
+
+	vs->Release();
+#pragma endregion
+
+#pragma region geometry shader
+	ID3DBlob* gs = nullptr;
+
+	D3DCompileFromFile(
+		L"DeferredGeometryGeometry.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"gs_4_0",
+		0, 0,
+		&gs,
+		nullptr);
+
+	device->CreateGeometryShader(
+		gs->GetBufferPointer(),
+		gs->GetBufferSize(),
+		nullptr,
+		&deferredGeometryGeometryShader);
+
+	D3DCompileFromFile(
+		L"DeferredLightGeometry.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"gs_4_0",
+		0, 0,
+		&gs,
+		nullptr);
+
+	device->CreateGeometryShader(
+		gs->GetBufferPointer(),
+		gs->GetBufferSize(),
+		nullptr,
+		&deferredLightGeometryShader);
+
+	D3DCompileFromFile(
+		L"DeferredDirectionalLightGeometry.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"gs_4_0",
+		0, 0,
+		&gs,
+		nullptr);
+
+	device->CreateGeometryShader(
+		gs->GetBufferPointer(),
+		gs->GetBufferSize(),
+		nullptr,
+		&deferredDirectionalLightGeometryShader);
+
+	gs->Release();
+#pragma endregion
+
+#pragma region pixel shader
+	// create pixel shader
+	ID3DBlob* ps = nullptr;
+
+	D3DCompileFromFile(
+		L"DeferredGeometryPixel.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"ps_4_0",
+		0, 0,
+		&ps,
+		nullptr);
+
+	device->CreatePixelShader(
+		ps->GetBufferPointer(),
+		ps->GetBufferSize(),
+		nullptr,
+		&deferredGeometryPixelShader);
+
+	D3DCompileFromFile(
+		L"DeferredDirectionalLightPixel.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"ps_4_0",
+		0, 0,
+		&ps,
+		nullptr);
+
+	device->CreatePixelShader(
+		ps->GetBufferPointer(),
+		ps->GetBufferSize(),
+		nullptr,
+		&deferredDirectionalLightPixelShader);
+
+	D3DCompileFromFile(
+		L"DeferredSpotLightPixel.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"ps_4_0",
+		0, 0,
+		&ps,
+		nullptr);
+
+	device->CreatePixelShader(
+		ps->GetBufferPointer(),
+		ps->GetBufferSize(),
+		nullptr,
+		&deferredSpotLightPixelShader);
+
+	D3DCompileFromFile(
+		L"DeferredPointLightPixel.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"ps_4_0",
+		0, 0,
+		&ps,
+		nullptr);
+
+	device->CreatePixelShader(
+		ps->GetBufferPointer(),
+		ps->GetBufferSize(),
+		nullptr,
+		&deferredPointLightPixelShader);
+
+	ps->Release();
+#pragma endregion
+
+#pragma region gbuffers
+	CreateGBuffer(&ColorBuffer, &ColorBufferRenderTargetView, &ColorBufferShaderResourceView);
+	CreateGBuffer(&NormalBuffer, &NormalBufferRenderTargetView, &NormalBufferShaderResourceView);
+	CreateGBuffer(&PositionBuffer, &PositionBufferRenderTargetView, &PositionBufferShaderResourceView);
+#pragma endregion
+
+#pragma region camera
+	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, -5.0f);
+	mainCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
+#pragma endregion
+
+#pragma region geometry
+	NormalUVVertex* vertices = nullptr;
+	UINT numVertices = 0;
+	UINT* indices = nullptr;
+	UINT numIndices = 0;
+
+	boxTexture = Texture::CreateTexture(device, "test4.tga");
+
+	LoadOBJ("box.obj", vertices, numVertices, indices, numIndices);
+	boxModel = Model::CreateModel(device, vertices, numVertices, indices, numIndices, 36, boxTexture);
+
+	boxObject = RenderObject::CreateRenderObject(device, boxModel);
+
+	delete[] vertices;
+	delete[] indices;
+#pragma endregion
+
+#pragma region ambient light buffer
+	XMFLOAT4 col = XMFLOAT4(0.1f, 0.1f, 0.1f, 0.0f);
+	ambientLightColor = XMLoadFloat4(&col);
+
+	// create description of world matrix buffer
+	D3D11_BUFFER_DESC ambientLightColorBufferDescription;
+	ambientLightColorBufferDescription.Usage = D3D11_USAGE_IMMUTABLE;
+	ambientLightColorBufferDescription.ByteWidth = sizeof(ambientLightColor);
+	ambientLightColorBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	ambientLightColorBufferDescription.CPUAccessFlags = 0;
+	ambientLightColorBufferDescription.MiscFlags = 0;
+	ambientLightColorBufferDescription.StructureByteStride = 0;
+
+	// create world matrix buffer
+	D3D11_SUBRESOURCE_DATA ambientLightColorBufferData;
+	ambientLightColorBufferData.pSysMem = &ambientLightColor;
+	ambientLightColorBufferData.SysMemPitch = 0;
+	ambientLightColorBufferData.SysMemSlicePitch = 0;
+
+	// create world matrix buffer
+	device->CreateBuffer(&ambientLightColorBufferDescription, &ambientLightColorBufferData, &ambientLightColorBuffer);
+#pragma endregion
+
+#pragma region rasterizer and depth states
+	D3D11_RASTERIZER_DESC geometryRasterizerStateDesc;
+	geometryRasterizerStateDesc.FillMode = D3D11_FILL_SOLID;
+	geometryRasterizerStateDesc.CullMode = D3D11_CULL_BACK;
+	geometryRasterizerStateDesc.FrontCounterClockwise = false;
+	geometryRasterizerStateDesc.DepthBias = 0;
+	geometryRasterizerStateDesc.SlopeScaledDepthBias = 0.0f;
+	geometryRasterizerStateDesc.DepthBiasClamp = 0.0f;
+	geometryRasterizerStateDesc.DepthClipEnable = true;
+	geometryRasterizerStateDesc.ScissorEnable = false;
+	geometryRasterizerStateDesc.MultisampleEnable = false;
+	geometryRasterizerStateDesc.AntialiasedLineEnable = false;
+
+	device->CreateRasterizerState(&geometryRasterizerStateDesc, &deferredGeometryRasterizerState);
+
+	D3D11_RASTERIZER_DESC lightRasterizerStateDesc;
+	lightRasterizerStateDesc.FillMode = D3D11_FILL_SOLID;
+	lightRasterizerStateDesc.CullMode = D3D11_CULL_FRONT;
+	lightRasterizerStateDesc.FrontCounterClockwise = false;
+	lightRasterizerStateDesc.DepthBias = 0;
+	lightRasterizerStateDesc.SlopeScaledDepthBias = 0.0f;
+	lightRasterizerStateDesc.DepthBiasClamp = 0.0f;
+	lightRasterizerStateDesc.DepthClipEnable = true;
+	lightRasterizerStateDesc.ScissorEnable = false;
+	lightRasterizerStateDesc.MultisampleEnable = false;
+	lightRasterizerStateDesc.AntialiasedLineEnable = false;
+
+	device->CreateRasterizerState(&lightRasterizerStateDesc, &deferredLightRasterizerState);
+
+	D3D11_DEPTH_STENCIL_DESC geometryDepthStateDesc;
+	geometryDepthStateDesc.DepthEnable = true;
+	geometryDepthStateDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	geometryDepthStateDesc.DepthFunc = D3D11_COMPARISON_LESS;
+	geometryDepthStateDesc.StencilEnable = false;
+	geometryDepthStateDesc.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
+	geometryDepthStateDesc.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
+	geometryDepthStateDesc.FrontFace.StencilFunc = geometryDepthStateDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+	geometryDepthStateDesc.FrontFace.StencilDepthFailOp = geometryDepthStateDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+	geometryDepthStateDesc.FrontFace.StencilPassOp = geometryDepthStateDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+	geometryDepthStateDesc.FrontFace.StencilFailOp = geometryDepthStateDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+
+	device->CreateDepthStencilState(&geometryDepthStateDesc, &deferredGeometryDepthState);
+
+	D3D11_DEPTH_STENCIL_DESC lightDepthStateDesc;
+	lightDepthStateDesc.DepthEnable = true;
+	lightDepthStateDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	lightDepthStateDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+	lightDepthStateDesc.StencilEnable = false;
+	lightDepthStateDesc.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
+	lightDepthStateDesc.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
+	lightDepthStateDesc.FrontFace.StencilFunc = geometryDepthStateDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+	lightDepthStateDesc.FrontFace.StencilDepthFailOp = geometryDepthStateDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+	lightDepthStateDesc.FrontFace.StencilPassOp = geometryDepthStateDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+	lightDepthStateDesc.FrontFace.StencilFailOp = geometryDepthStateDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+
+	device->CreateDepthStencilState(&lightDepthStateDesc, &deferredLightDepthState);
+#pragma endregion
+
+#pragma region blend states
+	D3D11_BLEND_DESC geometryBlendStateDesc;
+	geometryBlendStateDesc.AlphaToCoverageEnable = false;
+	geometryBlendStateDesc.IndependentBlendEnable = false;
+	geometryBlendStateDesc.RenderTarget[0].BlendEnable = false;
+	geometryBlendStateDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+	geometryBlendStateDesc.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+	geometryBlendStateDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+	geometryBlendStateDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+	geometryBlendStateDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+	geometryBlendStateDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	geometryBlendStateDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+	device->CreateBlendState(&geometryBlendStateDesc, &deferredGeometryBlendState);
+
+	D3D11_BLEND_DESC lightBlendStateDesc;
+	lightBlendStateDesc.AlphaToCoverageEnable = false;
+	lightBlendStateDesc.IndependentBlendEnable = false;
+	lightBlendStateDesc.RenderTarget[0].BlendEnable = true;
+	lightBlendStateDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+	lightBlendStateDesc.RenderTarget[1].BlendEnable = true;
+	lightBlendStateDesc.RenderTarget[1].SrcBlend = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[1].DestBlend = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[1].BlendOp = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[1].SrcBlendAlpha = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[1].DestBlendAlpha = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[1].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+	lightBlendStateDesc.RenderTarget[2].BlendEnable = true;
+	lightBlendStateDesc.RenderTarget[2].SrcBlend = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[2].DestBlend = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[2].BlendOp = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[2].SrcBlendAlpha = D3D11_BLEND_ONE;
+	lightBlendStateDesc.RenderTarget[2].DestBlendAlpha = D3D11_BLEND_ZERO;
+	lightBlendStateDesc.RenderTarget[2].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	lightBlendStateDesc.RenderTarget[2].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+	device->CreateBlendState(&lightBlendStateDesc, &deferredLightBlendState);
+#pragma endregion
+}
+
+void RenderDeferredRendering()
+{
+	// geo
+	// set backface culling, depth culling and blending states
+	deviceContext->RSSetState(deferredGeometryRasterizerState);
+	deviceContext->OMSetDepthStencilState(deferredGeometryDepthState, 0);
+	deviceContext->OMSetBlendState(deferredGeometryBlendState, NULL, 0xffffffff);
+
+	// set render targets
+	ID3D11ShaderResourceView* emptySRV[3] = { nullptr, nullptr, nullptr };
+	deviceContext->PSSetShaderResources(0, 3, emptySRV);
+
+	ID3D11RenderTargetView* rtvs[] = { ColorBufferRenderTargetView, PositionBufferRenderTargetView, NormalBufferRenderTargetView };
+	deviceContext->OMSetRenderTargets(3, rtvs, depthView);
+
+	// set shaders
+	deviceContext->VSSetShader(deferredGeometryVertexShader, nullptr, 0);
+	deviceContext->GSSetShader(deferredGeometryGeometryShader, nullptr, 0);
+	deviceContext->PSSetShader(deferredGeometryPixelShader, nullptr, 0);
+
+	// set viewproj buffers
+	ID3D11Buffer* viewProjectionMatrices[] = { (mainCamera->viewMatrixBuffer), (mainCamera->projectionMatrixBuffer) };
+	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
+	deviceContext->GSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
+
+	// set primitivetopology and input layout
+	deviceContext->IASetInputLayout(deferredGeometryInputLayout);
+	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// set world buffers + vertex/index buffers + render objects
+	UINT vertexSize = 36;
+	boxObject->Render(deviceContext, &vertexSize);
+	// ...
+
+
+	// lights
+	// set backface culling, depth culling and blending states
+	deviceContext->RSSetState(deferredLightRasterizerState);
+	deviceContext->OMSetDepthStencilState(deferredLightDepthState, 0);
+	deviceContext->OMSetBlendState(deferredLightBlendState, NULL, 0xffffffff);
+
+	// set render target
+	deviceContext->OMSetRenderTargets(1, &backBufferRenderTargetView, depthView);
+
+	// set shaders
+	deviceContext->VSSetShader(deferredLightVertexShader, nullptr, 0);
+	deviceContext->GSSetShader(deferredLightGeometryShader, nullptr, 0);
+
+	// set viewproj buffers
+	ID3D11Buffer* lightViewProjectionMatrices[] = { (mainCamera->viewMatrixBuffer), (mainCamera->projectionMatrixBuffer) };
+	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
+	deviceContext->GSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
+
+	// set primitivetopology and input layout
+	deviceContext->IASetInputLayout(deferredLightInputLayout);
+	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// set gbuffers
+	ID3D11ShaderResourceView* srvs[] = { ColorBufferShaderResourceView, PositionBufferShaderResourceView, NormalBufferShaderResourceView };
+	deviceContext->PSSetShaderResources(0, 3, srvs);
+
+	// set ambient light
+	deviceContext->PSSetConstantBuffers(1, 1, &ambientLightColorBuffer);
+
+	// set world buffers + vertex/index buffers + render lights
+	vertexSize = 12;
+	// directional lights
+	deviceContext->GSSetShader(deferredDirectionalLightGeometryShader, nullptr, 0);
+	deviceContext->PSSetShader(deferredDirectionalLightPixelShader, nullptr, 0);
+	testDirectionalLight->Render(deviceContext, &vertexSize);
+
+	// spotlights
+	deviceContext->GSSetShader(deferredLightGeometryShader, nullptr, 0);
+	deviceContext->PSSetShader(deferredSpotLightPixelShader, nullptr, 0);
+	//testSpotLight->Render(deviceContext, &vertexSize);
+
+	// point lights
+	deviceContext->PSSetShader(deferredPointLightPixelShader, nullptr, 0);
+	//testPointLight->Render(deviceContext, &vertexSize);
+}
+
+void CreateGBuffer(ID3D11Texture2D** texture, ID3D11RenderTargetView** renderTargetView, ID3D11ShaderResourceView** shaderResourceView)
+{
+	D3D11_TEXTURE2D_DESC desc;
+	desc.ArraySize = 1;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+	desc.CPUAccessFlags = 0;
+	desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	desc.Height = windowHeight;
+	desc.MipLevels = 0;
+	desc.MiscFlags = 0;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.Width = windowWidth;
+
+	device->CreateTexture2D(&desc, 0, texture);
+
+	D3D11_RENDER_TARGET_VIEW_DESC rendDesc;
+	rendDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	rendDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	rendDesc.Texture2D.MipSlice = 0;
+
+	device->CreateRenderTargetView(*texture, &rendDesc, renderTargetView);
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC shadDesc;
+	shadDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	shadDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shadDesc.Texture2D.MipLevels = 1;
+	shadDesc.Texture2D.MostDetailedMip = 0;
+
+	device->CreateShaderResourceView(*texture, &shadDesc, shaderResourceView);
+}
+
+void LoadOBJ(std::string fileName, NormalUVVertex*& verticesArray, UINT& numVertices, UINT*& indicesArray, UINT& numIndices)
+{
+	std::ifstream modelFile(fileName);
+
+	std::string str;
+
+	std::vector<XMFLOAT3> positions;
+	std::vector<XMFLOAT3> normals;
+	std::vector<XMFLOAT3> uvs;
+	std::vector<UINT> indices;
+	std::vector<XMINT3> vertexElementIndices;
+
+	int positionsNum = 0;
+	int normalsNum = 0;
+	int uvsNum = 0;
+
+	modelFile >> str;
+
+	while (!modelFile.eof())
+	{
+		if (str == "v")		// vertex position
+		{
+			if (positions.size() <= positionsNum)
+			{
+				positions.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			positions[positionsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			positions[positionsNum].y = std::stof(str, nullptr);
+
+			modelFile >> str;
+			positions[positionsNum].z = std::stof(str, nullptr);
+
+			positionsNum++;
+		}
+		else if (str == "vn")	// vertex normal
+		{
+			if (normals.size() <= normalsNum)
+			{
+				normals.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			normals[normalsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			normals[normalsNum].y = std::stof(str, nullptr);
+
+			modelFile >> str;
+			normals[normalsNum].z = std::stof(str, nullptr);
+
+			normalsNum++;
+		}
+		else if (str == "vt")	// vertex UV
+		{
+			if (uvs.size() <= uvsNum)
+			{
+				uvs.push_back(XMFLOAT3());
+			}
+
+			modelFile >> str;
+			uvs[uvsNum].x = std::stof(str, nullptr);
+
+			modelFile >> str;
+			uvs[uvsNum].y = std::stof(str, nullptr);
+
+			uvs[uvsNum].z = 0;
+
+			uvsNum++;
+		}
+		else if (str == "f")
+		{
+			XMINT3 elementIndices;
+
+			char temp[10];
+
+			for (int i = 0; i < 3; i++)
+			{
+				modelFile.get(temp, 10, '/');
+				str = temp;
+				elementIndices.x = std::stoi(str);
+				modelFile.get();
+
+				modelFile.get(temp, 10, '/');
+				str = temp;
+				elementIndices.y = std::stoi(str);
+				modelFile.get();
+
+				modelFile >> str;
+				elementIndices.z = std::stoi(str);
+
+				int foundIndex = -1;
+
+				for (int i = 0; i < vertexElementIndices.size(); i++)
+				{
+					if (vertexElementIndices[i].x == elementIndices.x &&
+						vertexElementIndices[i].y == elementIndices.y &&
+						vertexElementIndices[i].z == elementIndices.z)
+					{
+						foundIndex = i;
+						break;
+					}
+				}
+
+				if (foundIndex != -1)	// found in vertexElementIndices
+				{
+					indices.push_back(foundIndex);
+				}
+				else	// not found
+				{
+					vertexElementIndices.push_back(elementIndices);
+					indices.push_back(vertexElementIndices.size() - 1);
+				}
+			}
+		}
+		else	// discard
+		{
+			std::getline(modelFile, str);
+		}
+
+		modelFile >> str;
+	}
+
+	numVertices = vertexElementIndices.size();
+
+	delete[] verticesArray;
+	verticesArray = new NormalUVVertex[numVertices];
+
+	for (int i = 0; i < numVertices; i++)
+	{
+		verticesArray[i].position = positions[vertexElementIndices[i].x - 1];
+		verticesArray[i].UV = uvs[vertexElementIndices[i].y - 1];
+		verticesArray[i].normal = normals[vertexElementIndices[i].z - 1];
+	}
+
+	numIndices = indices.size();
+
+	delete[] indicesArray;
+	indicesArray = new UINT[numIndices];
+
+	for (int i = 0; i < numIndices; i++)
+	{
+		indicesArray[i] = indices[i];
+	}
+
+	modelFile.close();
+}
+
+void CreateLightGeometry()
+{
+	// create light geometry
+
+	// spotlight
+	NormalUVVertex* vertexData = nullptr;
+	UINT numVertices = 0;
+	UINT* indexData = nullptr;
+	UINT numIndices = 0;
+
+	LoadOBJ("cone.obj", vertexData, numVertices, indexData, numIndices);
+
+	spotLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 36, nullptr);
+
+	delete[] vertexData;
+	delete[] indexData;
+
+	vertexData = nullptr;
+	indexData = nullptr;
+
+	// pointlight
+	LoadOBJ("sphere.obj", vertexData, numVertices, indexData, numIndices);
+
+	pointLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 36, nullptr);
+
+	delete[] vertexData;
+	delete[] indexData;
+
+	// directional light
+	numVertices = 4;
+	numIndices = 6;
+	Vertex verts[] = {	Vertex(XMFLOAT3(-1, -1, 1.0f)),
+						Vertex(XMFLOAT3(-1, 1, 1.0f)),
+						Vertex(XMFLOAT3(1, -1, 1.0f)),
+						Vertex(XMFLOAT3(1, 1, 1.0f)) };
+
+	Vertex* verData = verts;
+
+	UINT indx[] = {0, 3, 1, 0, 2, 3};
+	indexData = indx;
+
+	directionalLightModel = Model::CreateModel(device, verData, numVertices, indexData, numIndices, 12, nullptr);
 }
