@@ -115,7 +115,7 @@ XMFLOAT4 DirectionalLight::getDirection()
 }
 void DirectionalLight::setDirection(XMFLOAT4 dir)
 {
-	direction = dir;
+	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
 
 	updateBuffer();
 }
@@ -123,7 +123,7 @@ void DirectionalLight::setDirection(XMFLOAT4 dir)
 DirectionalLight::DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 dir, Model* lightModel) : Light(device, deviceContext, pos, col)
 {
 	this->lightModel = lightModel;
-	direction = dir;
+	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
 }
 DirectionalLight::~DirectionalLight()
 {
@@ -163,7 +163,7 @@ void SpotLight::updateWorldMatrix()
 
 	deviceContext->Map(worldMatrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
 
-	memcpy(resource.pData, &transposed, getBufferSize());
+	memcpy(resource.pData, &transposed, sizeof(XMFLOAT4X4));
 
 	deviceContext->Unmap(worldMatrixBuffer, 0);
 }
@@ -174,7 +174,7 @@ XMFLOAT4 SpotLight::getDirection()
 }
 void SpotLight::setDirection(XMFLOAT4 dir)
 {
-	direction = dir;
+	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
 
 	updateBuffer();
 	updateWorldMatrix();
@@ -203,7 +203,7 @@ void SpotLight::setConeSize(float coneSize)
 
 SpotLight::SpotLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 dir, float range, float coneSize, Model* lightModel) : Light(device, deviceContext, pos, col)
 {
-	direction = dir;
+	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
 	this->range = range;
 	this->coneSize = coneSize;
 	this->lightModel = lightModel;
@@ -219,7 +219,10 @@ void* SpotLight::prepareBufferData()
 	char* bd = new char[getBufferSize()];
 	char filler[12] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l' };
 
-	memcpy(bd, &position, sizeof(XMFLOAT4));
+	XMFLOAT4 posWS;
+	XMStoreFloat4(&posWS, XMVector4Transform(XMLoadFloat4(&position), XMLoadFloat4x4(&worldMatrix))); 
+
+	memcpy(bd, &posWS, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4), &color, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4) * 2, &direction, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4) * 3, &range, sizeof(float));
@@ -235,7 +238,7 @@ int SpotLight::getBufferSize()
 
 void PointLight::updateWorldMatrix()
 {
-	XMStoreFloat4x4(&worldMatrix, XMMatrixScaling(range, range, range) * XMMatrixTranslationFromVector(XMLoadFloat4(&position)));
+	XMStoreFloat4x4(&worldMatrix, XMMatrixIdentity() * XMMatrixScaling(range, range, range) *XMMatrixTranslationFromVector(XMLoadFloat4(&position))); // flickering error
 
 	XMFLOAT4X4 transposed;
 	XMStoreFloat4x4(&transposed, XMMatrixTranspose(XMLoadFloat4x4(&worldMatrix)));
@@ -245,7 +248,7 @@ void PointLight::updateWorldMatrix()
 
 	deviceContext->Map(worldMatrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
 
-	memcpy(resource.pData, &transposed, getBufferSize());
+	memcpy(resource.pData, &transposed, sizeof(XMFLOAT4X4));
 
 	deviceContext->Unmap(worldMatrixBuffer, 0);
 }

@@ -9,6 +9,7 @@ Texture2D normalBuffer : register(t2);
 
 cbuffer data
 {
+	float4 position;
 	float4 color;
 	float4 direction;
 };
@@ -24,5 +25,5 @@ float4 main(GSoutput input) : SV_Target
 
 	float4 readColor = colorBuffer.Load(samplePos);
 
-	return (ambientColor * readColor) + max(0.0f, dot(-direction, normalBuffer.Load(samplePos)));
+	return (ambientColor * readColor) + max(0.0f, dot(-direction, normalBuffer.Load(samplePos))) * color * readColor;
 }
