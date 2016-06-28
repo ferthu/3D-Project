@@ -62,6 +62,7 @@ class SpotLight : public Light
 {
 private:
 	DirectX::XMFLOAT4 direction;
+	DirectX::XMFLOAT4X4 rotationMatrix;
 	float range;
 	float coneSize;
 

@@ -484,11 +484,11 @@ void CreateTestInput()
 		testCam);
 
 	// create test lights
-	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(0.5f, 0.5f, 1.0f, 1), 10.0f, pointLightModel);
+	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
 	testPointLight->Initialize();
-	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(0, 0, -2, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 0, 1, 0), 3, 3, spotLightModel);
+	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
 	testSpotLight->Initialize();
-	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0.0f, 0.1f, 0.0f, 1), XMFLOAT4(1, -1, 0.7f, 0), directionalLightModel);
+	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(1, -1, 0.7f, 0), directionalLightModel);
 	testDirectionalLight->Initialize();
 }
 
@@ -865,7 +865,7 @@ void SetupDeferredRendering()
 #pragma endregion
 
 #pragma region ambient light buffer
-	XMFLOAT4 col = XMFLOAT4(0.05f, 0.025f, 0.025f, 0.0f);
+	XMFLOAT4 col = XMFLOAT4(0.025f, 0.025f, 0.025f, 0.0f);
 	ambientLightColor = XMLoadFloat4(&col);
 
 	// create description of world matrix buffer
@@ -1053,7 +1053,7 @@ void RenderDeferredRendering()
 	// spotlights
 	deviceContext->GSSetShader(deferredLightGeometryShader, nullptr, 0);
 	deviceContext->PSSetShader(deferredSpotLightPixelShader, nullptr, 0);
-	//testSpotLight->Render(deviceContext, &vertexSize);
+	testSpotLight->Render(deviceContext, &vertexSize);
 
 	// point lights
 	deviceContext->PSSetShader(deferredPointLightPixelShader, nullptr, 0);

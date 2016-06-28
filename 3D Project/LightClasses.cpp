@@ -1,5 +1,6 @@
 #include "LightClasses.h"
 
+using namespace DirectX;
 
 DirectX::XMFLOAT4 Light::getPosition()
 {
@@ -36,6 +37,22 @@ Light::Light(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::
 
 void Light::Initialize()
 {
+	// world matrix buffer
+	D3D11_BUFFER_DESC wdesc;
+	wdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	wdesc.ByteWidth = sizeof(DirectX::XMFLOAT4);
+	wdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	wdesc.MiscFlags = 0;
+	wdesc.StructureByteStride = 0;
+	wdesc.Usage = D3D11_USAGE_DYNAMIC;
+
+	D3D11_SUBRESOURCE_DATA wdata;
+	wdata.pSysMem = &worldMatrix;
+	wdata.SysMemPitch = 0;
+	wdata.SysMemSlicePitch = 0;
+
+	device->CreateBuffer(&wdesc, &wdata, &worldMatrixBuffer);
+
 	// data buffer
 	D3D11_BUFFER_DESC desc;
 	desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -54,24 +71,8 @@ void Light::Initialize()
 
 	delete[] data.pSysMem;
 
-	// world matrix buffer
-	D3D11_BUFFER_DESC wdesc;
-	wdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	wdesc.ByteWidth = sizeof(DirectX::XMFLOAT4);
-	wdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	wdesc.MiscFlags = 0;
-	wdesc.StructureByteStride = 0;
-	wdesc.Usage = D3D11_USAGE_DYNAMIC;
-
-	D3D11_SUBRESOURCE_DATA wdata;
-	wdata.pSysMem = &worldMatrix;
-	wdata.SysMemPitch = 0;
-	wdata.SysMemSlicePitch = 0;
-
-	device->CreateBuffer(&wdesc, &wdata, &worldMatrixBuffer);
-
-	updateBuffer();
 	updateWorldMatrix();
+	updateBuffer();
 }
 
 Light::~Light()
@@ -151,10 +152,18 @@ int DirectionalLight::getBufferSize()
 
 void SpotLight::updateWorldMatrix()
 {
-	XMFLOAT4 upVector = XMFLOAT4(0, 1, 0, 0);
+	XMFLOAT3 forwardVector = XMFLOAT3(0, 0, 1);
+	XMFLOAT3 dir = XMFLOAT3(direction.x, direction.y, -direction.z); // -z because of angle
+	XMFLOAT3 angle;
+	XMFLOAT3 cross;
+	XMStoreFloat3(&angle, XMVector3AngleBetweenVectors(XMLoadFloat3(&forwardVector), XMLoadFloat3(&dir)));
+	XMStoreFloat3(&cross, XMVector3Cross(XMLoadFloat3(&dir), XMLoadFloat3(&forwardVector)));
 
-	XMStoreFloat4x4(&worldMatrix, XMMatrixScaling(coneSize, coneSize, range) * XMMatrixLookAtLH(-XMLoadFloat4(&position), XMLoadFloat4(&position) + XMLoadFloat4(&direction), XMLoadFloat4(&upVector)));
+	XMStoreFloat4x4(&rotationMatrix, XMMatrixRotationAxis(XMLoadFloat3(&cross), angle.x));
 
+	XMStoreFloat4x4(&worldMatrix, XMMatrixMultiply(XMMatrixScaling(coneSize, coneSize, range), XMLoadFloat4x4(&rotationMatrix)));
+	XMStoreFloat4x4(&worldMatrix, XMMatrixMultiply(XMLoadFloat4x4(&worldMatrix), XMMatrixTranslationFromVector(XMLoadFloat4(&position))));
+	
 	XMFLOAT4X4 transposed;
 	XMStoreFloat4x4(&transposed, XMMatrixTranspose(XMLoadFloat4x4(&worldMatrix)));
 
@@ -217,22 +226,29 @@ SpotLight::~SpotLight()
 void* SpotLight::prepareBufferData()
 {
 	char* bd = new char[getBufferSize()];
-	char filler[12] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l' };
+
+	XMFLOAT3 edgeDotValues;
+	XMFLOAT3 forward = XMFLOAT3(0, 0, 1);
+	XMFLOAT3 edge = XMFLOAT3(sqrtf(2.0f), 0, sqrtf(2.0f));
+	XMMATRIX scaling = XMMatrixScaling(coneSize, coneSize, range);
+	XMStoreFloat3(&edge, XMVector3Transform(XMLoadFloat3(&edge), scaling));
+	XMStoreFloat3(&edgeDotValues, XMVector3Dot(XMLoadFloat3(&forward), XMVector3Normalize(XMLoadFloat3(&edge))));
+	float edgeDotValue = edgeDotValues.x;
 
 	XMFLOAT4 posWS;
-	XMStoreFloat4(&posWS, XMVector4Transform(XMLoadFloat4(&position), XMLoadFloat4x4(&worldMatrix))); 
+	XMStoreFloat4(&posWS, XMLoadFloat4(&position)); 
 
 	memcpy(bd, &posWS, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4), &color, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4) * 2, &direction, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4) * 3, &range, sizeof(float));
-	memcpy(bd + sizeof(XMFLOAT4) * 3 + sizeof(float), &filler, 12);
+	memcpy(bd + sizeof(XMFLOAT4) * 3 + sizeof(float), &edgeDotValue, sizeof(float));
 
 	return bd;
 }
 int SpotLight::getBufferSize()
-{												  // filler
-	return sizeof(XMFLOAT4) * 3 + sizeof(float) + 12;
+{													 // filler
+	return sizeof(XMFLOAT4) * 3 + sizeof(float) * 2 + 8;
 }
 
 

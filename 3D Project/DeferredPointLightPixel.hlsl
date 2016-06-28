@@ -12,7 +12,6 @@ cbuffer data : register(b0)
 	float4 positionWS;
 	float4 color;
 	float range;
-	float3 padding;
 };
 
 cbuffer ambientCol : register(b1)
