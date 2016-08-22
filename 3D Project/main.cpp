@@ -932,8 +932,8 @@ void SetupDeferredRendering()
 
 	D3D11_DEPTH_STENCIL_DESC lightDepthStateDesc;
 	lightDepthStateDesc.DepthEnable = true;
-	lightDepthStateDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	lightDepthStateDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+	lightDepthStateDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+	lightDepthStateDesc.DepthFunc = D3D11_COMPARISON_GREATER;
 	lightDepthStateDesc.StencilEnable = false;
 	lightDepthStateDesc.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
 	lightDepthStateDesc.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
