@@ -2,6 +2,7 @@ struct VSinput
 {
 	float3 position : POSITION;
 	float3 normal : NORMAL;
+	float3 tangent : TANGENT;
 	float3 uv : TEXCOORDS;
 };
 
@@ -9,6 +10,7 @@ struct VSoutput
 {
 	float4 position : SV_POSITION;
 	float3 normal : NORMAL;
+	float3 tangent : TANGENT;
 	float3 uv : TEXCOORDS;
 };
 
@@ -33,6 +35,7 @@ VSoutput main(VSinput input)
 
 	output.position = float4(input.position, 1);
 	output.normal = input.normal;
+	output.tangent = input.tangent;
 	output.uv = input.uv;
 
 	return output;

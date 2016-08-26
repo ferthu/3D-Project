@@ -38,17 +38,20 @@ struct ColorVertex : Vertex
 struct NormalUVVertex : Vertex
 {
 	XMFLOAT3 normal;
+	XMFLOAT3 tangent;
 	XMFLOAT3 UV;
 
 	NormalUVVertex() : Vertex()
 	{
 		normal = XMFLOAT3(0, 0, 0);
+		tangent = XMFLOAT3(0, 0, 0);
 		UV = XMFLOAT3(0, 0, 0);
 	}
 
-	NormalUVVertex(XMFLOAT3 pos, XMFLOAT3 n, XMFLOAT3 uv) : Vertex(pos)
+	NormalUVVertex(XMFLOAT3 pos, XMFLOAT3 n, XMFLOAT3 t, XMFLOAT3 uv) : Vertex(pos)
 	{
 		normal = n;
+		tangent = t;
 		UV = uv;
 	}
 };

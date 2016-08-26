@@ -64,21 +64,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="TestGeometry.hlsl">
-      <Filter>Source Files\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TestPixel.hlsl">
-      <Filter>Source Files\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TestPixel2.hlsl">
-      <Filter>Source Files\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TestVertex.hlsl">
-      <Filter>Source Files\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TestVertex2.hlsl">
-      <Filter>Source Files\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="DeferredGeometryVertex.hlsl">
       <Filter>Source Files\Shaders</Filter>
     </FxCompile>

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <list>
 
 #include "RenderConfiguration.h"
 #include "RenderObject.h"
@@ -49,7 +50,6 @@ POINT previousMousePosition;
 float mouseSensitivity = 0.003f;
 #pragma endregion
 
-RenderConfiguration* texUVTest;
 Texture* testTexture = nullptr;
 Camera* testCam = nullptr;
 SpotLight* testSpotLight = nullptr;
@@ -61,6 +61,7 @@ Camera* mainCamera = nullptr;
 Model* boxModel = nullptr;
 RenderObject* boxObject = nullptr;
 Texture* boxTexture = nullptr;
+Texture* boxNormalMap = nullptr;
 
 Model* spotLightModel = nullptr;
 Model* pointLightModel = nullptr;
@@ -161,7 +162,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	CreateLightGeometry();
 
 	CreateTestInput();
-	CreateTestModel();
 
 	// main loop
 	MSG msg = { 0 };
@@ -191,6 +191,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	delete boxModel;
 	delete boxObject;
 	delete boxTexture;
+	delete boxNormalMap;
 	delete spotLightModel;
 	delete pointLightModel;
 	delete directionalLightModel;
@@ -445,44 +446,6 @@ void Render()
 
 void CreateTestInput()
 {
-	VertexElementDescription colorVertexDescription[2];
-	colorVertexDescription[0].semanticName = "POSITION";
-	colorVertexDescription[0].semanticIndex = 0;
-	colorVertexDescription[0].vec4 = false;
-	colorVertexDescription[1].semanticName = "COLOR";
-	colorVertexDescription[1].semanticIndex = 0;
-	colorVertexDescription[1].vec4 = false;
-
-	ColorVertex vertexData[3] = 
-	{
-		{ XMFLOAT3(0.0f, 0.0f, 0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-		{ XMFLOAT3(0.0f, 0.5f, 0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-		{ XMFLOAT3(0.5f, 0.0f, 0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f) }
-	};
-
-	UINT indexData[6] = { 0, 1, 2, 0, 2, 1 };
-
-	VertexElementDescription texUVVertexDescription[3];
-	texUVVertexDescription[0].semanticName = "POSITION";
-	texUVVertexDescription[0].semanticIndex = 0;
-	texUVVertexDescription[0].vec4 = false;
-	texUVVertexDescription[1].semanticName = "NORMAL";
-	texUVVertexDescription[1].semanticIndex = 0;
-	texUVVertexDescription[1].vec4 = false;
-	texUVVertexDescription[2].semanticName = "TEXCOORD";
-	texUVVertexDescription[2].semanticIndex = 0;
-	texUVVertexDescription[2].vec4 = false;
-
-	texUVTest = RenderConfiguration::CreateRenderConfiguration(
-		device,
-		deviceContext,
-		3,
-		texUVVertexDescription,
-		L"TestVertex2.hlsl",
-		L"",
-		L"TestPixel2.hlsl",
-		testCam);
-
 	// create test lights
 	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
 	testPointLight->Initialize();
@@ -492,164 +455,14 @@ void CreateTestInput()
 	testDirectionalLight->Initialize();
 }
 
-void CreateTestModel()
-{
-	std::ifstream modelFile("box.obj");
-
-	std::string str;
-
-	std::vector<XMFLOAT3> positions;
-	std::vector<XMFLOAT3> normals;
-	std::vector<XMFLOAT3> uvs;
-	std::vector<UINT> indices;
-	std::vector<XMINT3> vertexElementIndices;
-
-	int positionsNum = 0;
-	int normalsNum = 0;
-	int uvsNum = 0;
-
-	modelFile >> str;
-
-	while (!modelFile.eof())
-	{
-		if (str == "v")		// vertex position
-		{
-			if (positions.size() <= positionsNum)
-			{
-				positions.push_back(XMFLOAT3());
-			}
-
-			modelFile >> str;
-			positions[positionsNum].x = std::stof(str, nullptr);
-
-			modelFile >> str;
-			positions[positionsNum].y = std::stof(str, nullptr);
-
-			modelFile >> str;
-			positions[positionsNum].z = std::stof(str, nullptr);
-
-			positionsNum++;
-		}
-		else if (str == "vn")	// vertex normal
-		{
-			if (normals.size() <= normalsNum)
-			{
-				normals.push_back(XMFLOAT3());
-			}
-
-			modelFile >> str;
-			normals[normalsNum].x = std::stof(str, nullptr);
-
-			modelFile >> str;
-			normals[normalsNum].y = std::stof(str, nullptr);
-
-			modelFile >> str;
-			normals[normalsNum].z = std::stof(str, nullptr);
-
-			normalsNum++;
-		}
-		else if (str == "vt")	// vertex UV
-		{
-			if (uvs.size() <= uvsNum)
-			{
-				uvs.push_back(XMFLOAT3());
-			}
-
-			modelFile >> str;
-			uvs[uvsNum].x = std::stof(str, nullptr);
-
-			modelFile >> str;
-			uvs[uvsNum].y = std::stof(str, nullptr);
-
-			uvs[uvsNum].z = 0;
-
-			uvsNum++;
-		}
-		else if (str == "f")
-		{
-			XMINT3 elementIndices;
-
-			char temp[10];
-
-			for (int i = 0; i < 3; i++)
-			{
-				modelFile.get(temp, 10, '/');
-				str = temp;
-				elementIndices.x = std::stoi(str);
-				modelFile.get();
-
-				modelFile.get(temp, 10, '/');
-				str = temp;
-				elementIndices.y = std::stoi(str);
-				modelFile.get();
-
-				modelFile >> str;
-				elementIndices.z = std::stoi(str);
-
-				int foundIndex = -1;
-
-				for (int i = 0; i < vertexElementIndices.size(); i++)
-				{
-					if (vertexElementIndices[i].x == elementIndices.x &&
-						vertexElementIndices[i].y == elementIndices.y &&
-						vertexElementIndices[i].z == elementIndices.z)
-					{
-						foundIndex = i;
-						break;
-					}
-				}
-
-				if (foundIndex != -1)	// found in vertexElementIndices
-				{
-					indices.push_back(foundIndex);
-				}
-				else	// not found
-				{
-					vertexElementIndices.push_back(elementIndices);
-					indices.push_back(vertexElementIndices.size() - 1);
-				}
-			}
-		}
-		else	// discard
-		{
-			std::getline(modelFile, str);	
-		}
-		
-		modelFile >> str;
-	}
-
-	NormalUVVertex* vertices = new NormalUVVertex[vertexElementIndices.size()];
-
-	for (int i = 0; i < vertexElementIndices.size(); i++)
-	{
-		vertices[i].position = positions[vertexElementIndices[i].x - 1];
-		vertices[i].UV = uvs[vertexElementIndices[i].y - 1];
-		vertices[i].normal = normals[vertexElementIndices[i].z - 1];
-	}
-
-	UINT* indexArray = new UINT[indices.size()];
-
-	for (int i = 0; i < indices.size(); i++)
-	{
-		indexArray[i] = indices[i];
-	}
-
-	texUVTest->CreateModel(device, vertices, vertexElementIndices.size(), indexArray, indices.size(), testTexture);
-	texUVTest->CreateObject(device, texUVTest->models[0]);
-
-	delete[] vertices;
-	delete[] indexArray;
-
-	modelFile.close();
-}
-
 void SetupDeferredRendering()
 {
 #pragma region input description
 	D3D11_INPUT_ELEMENT_DESC normalMappedVertexInputDescription[] =
 	{ { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	  { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	  { "TEXCOORDS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+	  { "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  { "TEXCOORDS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
 
 	D3D11_INPUT_ELEMENT_DESC lightMeshVertexInputDescription =
 	 { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 };
@@ -678,7 +491,7 @@ void SetupDeferredRendering()
 	// create geometry input layout
 	device->CreateInputLayout(
 		normalMappedVertexInputDescription,
-		3,
+		4,
 		vs->GetBufferPointer(),
 		vs->GetBufferSize(),
 		&deferredGeometryInputLayout);
@@ -854,9 +667,10 @@ void SetupDeferredRendering()
 	UINT numIndices = 0;
 
 	boxTexture = Texture::CreateTexture(device, "test4.tga");
+	boxNormalMap = Texture::CreateTexture(device, "boxNormalMap.tga");
 
 	LoadOBJ("box.obj", vertices, numVertices, indices, numIndices);
-	boxModel = Model::CreateModel(device, vertices, numVertices, indices, numIndices, 36, boxTexture);
+	boxModel = Model::CreateModel(device, vertices, numVertices, indices, numIndices, 48, boxTexture, boxNormalMap);
 
 	boxObject = RenderObject::CreateRenderObject(device, boxModel);
 
@@ -1009,7 +823,7 @@ void RenderDeferredRendering()
 	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// set world buffers + vertex/index buffers + render objects
-	UINT vertexSize = 36;
+	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
 	// ...
 
@@ -1229,6 +1043,7 @@ void LoadOBJ(std::string fileName, NormalUVVertex*& verticesArray, UINT& numVert
 		verticesArray[i].position = positions[vertexElementIndices[i].x - 1];
 		verticesArray[i].UV = uvs[vertexElementIndices[i].y - 1];
 		verticesArray[i].normal = normals[vertexElementIndices[i].z - 1];
+		verticesArray[i].tangent = XMFLOAT3(0.0f, 0.0f, 0.0f);
 	}
 
 	numIndices = indices.size();
@@ -1242,6 +1057,60 @@ void LoadOBJ(std::string fileName, NormalUVVertex*& verticesArray, UINT& numVert
 	}
 
 	modelFile.close();
+
+	// calculate tangents
+	std::list<XMVECTOR>* adjacentFaceTangents = new std::list<XMVECTOR>[numVertices];
+
+	for (int i = 0; i < numIndices; i += 3)
+	{
+		int V0 = indices[i];
+		int V1 = indices[i + 1];
+		int V2 = indices[i + 2];
+
+		float du0 = verticesArray[V1].UV.x - verticesArray[V0].UV.x;
+		float du1 = verticesArray[V2].UV.x - verticesArray[V0].UV.x;
+		float dv0 = verticesArray[V1].UV.y - verticesArray[V0].UV.y;
+		float dv1 = verticesArray[V2].UV.y - verticesArray[V0].UV.y;
+
+		float divisor = 1.0f / (du0 * dv1 - dv0 * du1);
+
+		XMVECTOR faceTangent = XMVectorSet( divisor * (		dv1 * (verticesArray[V1].position.x - verticesArray[V0].position.x)
+														  - dv0 * (verticesArray[V2].position.x - verticesArray[V0].position.x)),
+
+											divisor * (		dv1 * (verticesArray[V1].position.y - verticesArray[V0].position.y)
+														  - dv0 * (verticesArray[V2].position.y - verticesArray[V0].position.y)), 
+
+											divisor * (		dv1 * (verticesArray[V1].position.z - verticesArray[V0].position.z)
+														  - dv0 * (verticesArray[V2].position.z - verticesArray[V0].position.z)), 
+											0.0f);
+
+		faceTangent = XMVector3Normalize(faceTangent);
+
+		adjacentFaceTangents[V0].push_back(faceTangent);
+		adjacentFaceTangents[V1].push_back(faceTangent);
+		adjacentFaceTangents[V2].push_back(faceTangent);
+	}
+
+	// empty lists and average tangents
+	for (int i = 0; i < numVertices; i++)
+	{
+		XMVECTOR averagedTangent = XMVectorReplicate(0.0f);
+
+		int listSize = adjacentFaceTangents[i].size();
+
+		for (int j = 0; j < listSize; j++)
+		{
+			averagedTangent += adjacentFaceTangents[i].front();
+			adjacentFaceTangents[i].pop_front();
+		}
+
+		averagedTangent = XMVector3Normalize(averagedTangent);
+
+		XMStoreFloat3(&(verticesArray[i].tangent), averagedTangent);
+	}
+
+	// remove list
+	delete[] adjacentFaceTangents;
 }
 
 void LoadLightOBJ(std::string fileName, Vertex*& verticesArray, UINT& numVertices, UINT*& indicesArray, UINT& numIndices)
@@ -1362,7 +1231,7 @@ void CreateLightGeometry()
 
 	LoadLightOBJ("cone.obj", vertexData, numVertices, indexData, numIndices);
 
-	spotLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 12, nullptr);
+	spotLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 12, nullptr, nullptr);
 
 	delete[] vertexData;
 	delete[] indexData;
@@ -1373,7 +1242,7 @@ void CreateLightGeometry()
 	// pointlight
 	LoadLightOBJ("sphere.obj", vertexData, numVertices, indexData, numIndices);
 
-	pointLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 12, nullptr);
+	pointLightModel = Model::CreateModel(device, vertexData, numVertices, indexData, numIndices, 12, nullptr, nullptr);
 
 	delete[] vertexData;
 	delete[] indexData;
@@ -1391,5 +1260,5 @@ void CreateLightGeometry()
 	UINT indx[] = {0, 3, 1, 0, 2, 3};
 	indexData = indx;
 
-	directionalLightModel = Model::CreateModel(device, verData, numVertices, indexData, numIndices, 12, nullptr);
+	directionalLightModel = Model::CreateModel(device, verData, numVertices, indexData, numIndices, 12, nullptr, nullptr);
 }

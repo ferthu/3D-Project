@@ -18,6 +18,8 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 
 	if (model->texture != nullptr)
 		deviceContext->PSSetShaderResources(0, 1, &(model->texture->textureView));
+	if (model->normalMap != nullptr)
+		deviceContext->PSSetShaderResources(1, 1, &(model->normalMap->textureView));
 
 	// render
 	deviceContext->DrawIndexed(model->numIndices, 0, 0);

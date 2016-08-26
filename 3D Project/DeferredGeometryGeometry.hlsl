@@ -3,6 +3,7 @@ struct GSoutput
 	float4 position : SV_POSITION;
 	float3 positionWS : POSITIONWS;
 	float3 normalWS : NORMALWS;
+	float3 tangentWS : TANGENTWS;
 	float3 uv : TEXCOORDS;
 };
 
@@ -22,7 +23,7 @@ cbuffer projection : register(b2)
 }
 
 [maxvertexcount(3)]
-void main(triangle float4 inputPosition[3] : SV_POSITION, triangle float3 inputNormal[3] : NORMAL, triangle float3 inputUV[3] : TEXCOORDS,  inout TriangleStream<GSoutput> GSout)
+void main(triangle float4 inputPosition[3] : SV_POSITION, triangle float3 inputNormal[3] : NORMAL, triangle float3 inputTangent[3] : TANGENT, triangle float3 inputUV[3] : TEXCOORDS,  inout TriangleStream<GSoutput> GSout)
 {
 	GSoutput element[3];
 
@@ -31,6 +32,7 @@ void main(triangle float4 inputPosition[3] : SV_POSITION, triangle float3 inputN
 		element[i].position = mul(inputPosition[i], worldMatrix);
 		element[i].positionWS = element[i].position;
 		element[i].normalWS = mul(inputNormal[i], worldMatrix);
+		element[i].tangentWS = mul(inputTangent[i], worldMatrix);
 
 		element[i].position = mul(element[i].position, viewMatrix);
 	}
