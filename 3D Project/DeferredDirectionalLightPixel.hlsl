@@ -11,6 +11,7 @@ cbuffer data
 {
 	float4 position;
 	float4 color;
+	float4 specularColor;
 	float4 direction;
 };
 
@@ -19,11 +20,32 @@ cbuffer ambientCol : register(b1)
 	float4 ambientColor;
 }
 
+cbuffer camera : register(b3)
+{
+	float3 cameraPosition;
+}
+
+
 float4 main(GSoutput input) : SV_Target
 {
 	int3 samplePos = int3(input.position.xy, 0);
 
 	float4 readColor = colorBuffer.Load(samplePos);
+	float4 readPosition = positionBuffer.Load(samplePos);
+	float4 readNormal = normalBuffer.Load(samplePos) * 2.0f - 1.0f;
 
-	return (ambientColor * readColor) + max(0.0f, dot(-direction, normalBuffer.Load(samplePos))) * color * readColor;
+	// specular
+	float4 specularLight = float4(0, 0, 0, 0);
+
+	float3 reflectionVector = reflect(direction, readNormal);
+
+	[flatten]
+	if (dot(readNormal, direction) < 0.0f)
+	{
+		float specularStrength = pow(max(0.0f, dot(reflectionVector, normalize(cameraPosition - readPosition.xyz))), readColor.w * 255.0f);
+
+		specularLight = specularStrength * specularColor * readColor;
+	}
+
+	return (ambientColor * readColor) + max(0.0f, dot(-direction, readNormal)) * color * readColor + specularLight;
 }

@@ -393,11 +393,11 @@ void Update()
 
 	XMVector3Normalize(cameraTranslation);
 
-	XMVECTOR newPos = XMLoadFloat3(&(mainCamera->position)) + cameraTranslation * 2;
+	XMVECTOR newPos = mainCamera->GetPosition() + cameraTranslation * 2;
 
-	XMStoreFloat3(&(mainCamera->position), newPos);
+	mainCamera->SetPosition(deviceContext, newPos);
 
-	mainCamera->SetViewMatrix(deviceContext, mainCamera->CreateViewMatrix(XMLoadFloat3(&(mainCamera->position)), mainCamera->pitch, mainCamera->yaw));
+	mainCamera->SetViewMatrix(deviceContext, mainCamera->CreateViewMatrix(mainCamera->GetPosition(), mainCamera->pitch, mainCamera->yaw));
 
 
 	previousMousePosition = currentMousePosition;
@@ -447,11 +447,11 @@ void Render()
 void CreateTestInput()
 {
 	// create test lights
-	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
+	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
 	testPointLight->Initialize();
-	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
+	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
 	testSpotLight->Initialize();
-	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(1, -1, 0.7f, 0), directionalLightModel);
+	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(1, -1, 0.7f, 0), directionalLightModel);
 	testDirectionalLight->Initialize();
 }
 
@@ -856,6 +856,9 @@ void RenderDeferredRendering()
 
 	// set ambient light
 	deviceContext->PSSetConstantBuffers(1, 1, &ambientLightColorBuffer);
+
+	// set camera position buffer
+	deviceContext->PSSetConstantBuffers(3, 1, &(mainCamera->cameraPositionBuffer));
 
 	// set world buffers + vertex/index buffers + render lights
 	vertexSize = 12;

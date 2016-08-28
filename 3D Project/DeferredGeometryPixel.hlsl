@@ -40,8 +40,12 @@ PSoutput main(GSoutput input)
 	float3x3 TBN = float3x3(T, B, input.normalWS);
 
 	// transform normal to world space and write result to normal buffer
-	output.normalWS = float4(mul(readNormal, TBN), 1.0f);
+	float3 normal = mul(readNormal, TBN);
 
+	// convert back to [0,1]
+	normal = (normal / 2.0f) + 0.5f;
+
+	output.normalWS = float4(normal, 0.0f);
 
 	return output;
 }

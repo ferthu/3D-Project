@@ -26,10 +26,23 @@ void Light::setColor(DirectX::XMFLOAT4 col)
 	updateBuffer();
 }
 
-Light::Light(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col)
+DirectX::XMFLOAT4 Light::getSpecularColor()
+{
+	return color;
+}
+
+void Light::setSpecularColor(DirectX::XMFLOAT4 specCol)
+{
+	specularColor = specCol;
+
+	updateBuffer();
+}
+
+Light::Light(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol)
 {
 	position = pos;
 	color = col;
+	specularColor = specCol;
 
 	this->deviceContext = deviceContext;
 	this->device = device;
@@ -121,7 +134,7 @@ void DirectionalLight::setDirection(XMFLOAT4 dir)
 	updateBuffer();
 }
 
-DirectionalLight::DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 dir, Model* lightModel) : Light(device, deviceContext, pos, col)
+DirectionalLight::DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 specCol, XMFLOAT4 dir, Model* lightModel) : Light(device, deviceContext, pos, col, specCol)
 {
 	this->lightModel = lightModel;
 	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
@@ -140,13 +153,14 @@ void* DirectionalLight::prepareBufferData()
 
 	memcpy(bd, &position, sizeof(XMFLOAT4));
 	memcpy(bd + sizeof(XMFLOAT4), &color, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4) * 2, &direction, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 2, &specularColor, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 3, &direction, sizeof(XMFLOAT4));
 
 	return bd;
 }
 int DirectionalLight::getBufferSize()
 {
-	return sizeof(XMFLOAT4) * 3;
+	return sizeof(XMFLOAT4) * 4;
 }
 
 
@@ -210,7 +224,7 @@ void SpotLight::setConeSize(float coneSize)
 	updateWorldMatrix();
 }
 
-SpotLight::SpotLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 dir, float range, float coneSize, Model* lightModel) : Light(device, deviceContext, pos, col)
+SpotLight::SpotLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 specCol, XMFLOAT4 dir, float range, float coneSize, Model* lightModel) : Light(device, deviceContext, pos, col, specCol)
 {
 	XMStoreFloat4(&direction, XMVector4Normalize(XMLoadFloat4(&dir)));
 	this->range = range;
@@ -238,17 +252,18 @@ void* SpotLight::prepareBufferData()
 	XMFLOAT4 posWS;
 	XMStoreFloat4(&posWS, XMLoadFloat4(&position)); 
 
-	memcpy(bd, &posWS, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4), &color, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4) * 2, &direction, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4) * 3, &range, sizeof(float));
-	memcpy(bd + sizeof(XMFLOAT4) * 3 + sizeof(float), &edgeDotValue, sizeof(float));
+	memcpy(bd										, &posWS, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4)					, &color, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 2				, &specularColor, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 3				, &direction, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 4				, &range, sizeof(float));
+	memcpy(bd + sizeof(XMFLOAT4) * 4 + sizeof(float), &edgeDotValue, sizeof(float));
 
 	return bd;
 }
 int SpotLight::getBufferSize()
 {													 // filler
-	return sizeof(XMFLOAT4) * 3 + sizeof(float) * 2 + 8;
+	return sizeof(XMFLOAT4) * 4 + sizeof(float) * 2 + 8;
 }
 
 
@@ -280,7 +295,7 @@ void PointLight::setRange(float range)
 	updateWorldMatrix();
 }
 
-PointLight::PointLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, float range, Model* lightModel) : Light(device, deviceContext, pos, col)
+PointLight::PointLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, XMFLOAT4 pos, XMFLOAT4 col, XMFLOAT4 specCol, float range, Model* lightModel) : Light(device, deviceContext, pos, col, specCol)
 {
 	this->range = range;
 	this->lightModel = lightModel;
@@ -294,18 +309,19 @@ PointLight::~PointLight()
 void* PointLight::prepareBufferData()
 {
 	char* bd = new char[getBufferSize()];
-	char filler[12] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l' };
+	//char filler[12] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l' };
 
-	memcpy(bd, &position, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4), &color, sizeof(XMFLOAT4));
-	memcpy(bd + sizeof(XMFLOAT4) * 2, &range, sizeof(float));
-	memcpy(bd + sizeof(XMFLOAT4) * 2 + sizeof(float), &filler, sizeof(float));
+	memcpy(bd						, &position, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4)	, &color, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 2, &specularColor, sizeof(XMFLOAT4));
+	memcpy(bd + sizeof(XMFLOAT4) * 3, &range, sizeof(float));
+	//memcpy(bd + sizeof(XMFLOAT4) * 2 + sizeof(float), &filler, sizeof(float));
 
 	return bd;
 }
 int PointLight::getBufferSize()
 {												  // filler
-	return sizeof(XMFLOAT4) * 2 + sizeof(float) + 12;
+	return sizeof(XMFLOAT4) * 3 + sizeof(float) + 12;
 }
 
 void DirectionalLight::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)

@@ -43,6 +43,24 @@ void Camera::SetProjectionMatrix(ID3D11DeviceContext* deviceContext, FXMMATRIX p
 	deviceContext->Unmap(projectionMatrixBuffer, 0);
 }
 
+XMVECTOR& Camera::GetPosition()
+{
+	return XMLoadFloat3(&position);
+}
+void Camera::SetPosition(ID3D11DeviceContext* deviceContext, FXMVECTOR position)
+{
+	XMStoreFloat3(&(this->position), position);
+
+	D3D11_MAPPED_SUBRESOURCE resource;
+	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+	deviceContext->Map(cameraPositionBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+
+	memcpy(resource.pData, &(this->position), sizeof(this->position));
+
+	deviceContext->Unmap(cameraPositionBuffer, 0);
+}
+
 Camera* Camera::CreateCamera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float horizontalFOV, float nearPlaneDistance, float farPlaneDistance, FXMVECTOR position, float pitch, float yaw, float pitchUpperLimit, float pitchLowerLimit, float aspectRatio)
 {
 	return new Camera(device, deviceContext, horizontalFOV, nearPlaneDistance, farPlaneDistance, position, pitch, yaw, pitchUpperLimit, pitchLowerLimit, aspectRatio);
@@ -100,6 +118,24 @@ Camera::Camera(ID3D11Device* device, ID3D11DeviceContext* deviceContext, float h
 	// create projection matrix buffer
 	device->CreateBuffer(&projectionMatrixBufferDescription, &projectionMatrixBufferData, &projectionMatrixBuffer);
 
+	// create description of camera position buffer
+	D3D11_BUFFER_DESC cameraPositionBufferDescription;
+	cameraPositionBufferDescription.Usage = D3D11_USAGE_DYNAMIC;		 // filler
+	cameraPositionBufferDescription.ByteWidth = sizeof(this->position) + 4;
+	cameraPositionBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	cameraPositionBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	cameraPositionBufferDescription.MiscFlags = 0;
+	cameraPositionBufferDescription.StructureByteStride = 0;
+
+	// create camera position buffer
+	D3D11_SUBRESOURCE_DATA cameraPositionBufferData;
+	cameraPositionBufferData.pSysMem = &(this->position);
+	cameraPositionBufferData.SysMemPitch = 0;
+	cameraPositionBufferData.SysMemSlicePitch = 0;
+
+	// create camera position buffer
+	device->CreateBuffer(&cameraPositionBufferDescription, &cameraPositionBufferData, &cameraPositionBuffer);
+
 	SetViewMatrix(deviceContext, XMLoadFloat4x4(&viewMatrix));
 	SetProjectionMatrix(deviceContext, XMLoadFloat4x4(&projectionMatrix));
 }
@@ -108,6 +144,7 @@ Camera::~Camera()
 {
 	viewMatrixBuffer->Release();
 	projectionMatrixBuffer->Release();
+	cameraPositionBuffer->Release();
 }
 
 XMMATRIX Camera::CreateViewMatrix(FXMVECTOR position, float pitch, float yaw)

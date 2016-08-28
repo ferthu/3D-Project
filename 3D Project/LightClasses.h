@@ -15,6 +15,7 @@ protected:
 	ID3D11Device* device;
 	DirectX::XMFLOAT4 position;
 	DirectX::XMFLOAT4 color;
+	DirectX::XMFLOAT4 specularColor;
 	XMFLOAT4X4 worldMatrix;
 
 	virtual void updateWorldMatrix() = 0;
@@ -31,10 +32,12 @@ public:
 	void setPosition(DirectX::XMFLOAT4 pos);
 	DirectX::XMFLOAT4 getColor();
 	void setColor(DirectX::XMFLOAT4 col);
+	DirectX::XMFLOAT4 getSpecularColor();
+	void setSpecularColor(DirectX::XMFLOAT4 specCol);
 	virtual void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize) = 0;
 	void Initialize();
 
-	Light(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col);
+	Light(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol);
 	virtual ~Light();
 };
 
@@ -53,7 +56,7 @@ public:
 	void setDirection(DirectX::XMFLOAT4 dir);
 	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize);
 
-	DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 dir, Model* lightModel);
+	DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol, DirectX::XMFLOAT4 dir, Model* lightModel);
 	virtual ~DirectionalLight();
 };
 
@@ -79,7 +82,7 @@ public:
 	void setConeSize(float coneSize);
 	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize);
 
-	SpotLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 dir, float range, float coneSize, Model* lightModel);
+	SpotLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol, DirectX::XMFLOAT4 dir, float range, float coneSize, Model* lightModel);
 	virtual ~SpotLight();
 };
 
@@ -98,7 +101,7 @@ public:
 	void setRange(float range);
 	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize);
 
-	PointLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, float range, Model* lightModel);
+	PointLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol, float range, Model* lightModel);
 	virtual ~PointLight();
 };
 
