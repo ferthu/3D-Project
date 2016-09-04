@@ -213,9 +213,9 @@ void RenderConfiguration::Render(ID3D11DeviceContext* deviceContext)
 	}
 }
 
-void RenderConfiguration::CreateObject(ID3D11Device* device, Model* model)
+void RenderConfiguration::CreateObject(ID3D11Device* device, Model* model, XMFLOAT4 objectColor)
 {
-	objects.push_back(RenderObject::CreateRenderObject(device, model));
+	objects.push_back(RenderObject::CreateRenderObject(device, model, objectColor));
 }
 
 void RenderConfiguration::CreateModel(ID3D11Device* device, Vertex* vertexData, UINT numVertices, UINT* indexData, UINT numIndices, Texture* texture, Texture* normalMap)

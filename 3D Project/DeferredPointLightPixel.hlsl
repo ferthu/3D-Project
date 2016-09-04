@@ -59,7 +59,5 @@ float4 main(GSoutput input) : SV_Target
 		specularLight = specularStrength * specularColor * readColor;
 	}
 
-	return (ambientColor * readColor) + max(0.0f, dot(-direction, readNormal)) * color * readColor + specularLight;
-
 	return (readColor * color + specularLight) * rangeAttenuation * angleModifier;
 }

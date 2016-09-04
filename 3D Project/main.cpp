@@ -48,6 +48,9 @@ double frameTime;
 POINT currentMousePosition;
 POINT previousMousePosition;
 float mouseSensitivity = 0.003f;
+
+float terrainSize = 20.0f;
+float terrainHeight = 5.0f;
 #pragma endregion
 
 Texture* testTexture = nullptr;
@@ -62,6 +65,15 @@ Model* boxModel = nullptr;
 RenderObject* boxObject = nullptr;
 Texture* boxTexture = nullptr;
 Texture* boxNormalMap = nullptr;
+
+Model* terrainModel = nullptr;
+RenderObject* terrainObject = nullptr;
+Texture* terrainTexture = nullptr;
+Texture* terrainNormalMap = nullptr;
+int terrainVertexWidth;
+int terrainVertexHeight;
+float* heights;
+UINT numHeights;
 
 Model* spotLightModel = nullptr;
 Model* pointLightModel = nullptr;
@@ -119,6 +131,8 @@ void CreateGBuffer(ID3D11Texture2D** texture, ID3D11RenderTargetView** renderTar
 void LoadOBJ(std::string fileName, NormalUVVertex*& verticesArray, UINT& numVertices, UINT*& indicesArray, UINT& numIndices);
 void LoadLightOBJ(std::string fileName, Vertex*& verticesArray, UINT& numVertices, UINT*& indicesArray, UINT& numIndices);
 void CreateLightGeometry();
+XMFLOAT4 readObjectColor(char* materialFileName);
+void CreateTerrain(char* heightMapName, float size, float heightRange, char* textureName, char* normalMapName, int& terrainVertexWidth, int& terrainVertexHeight, float*& heights, UINT& numHeights);
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
 {
@@ -156,8 +170,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	initializeD3D();
 
 	SetupDeferredRendering();
-
-	testTexture = Texture::CreateTexture(device, "test4.tga");
 
 	CreateLightGeometry();
 
@@ -198,6 +210,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	delete testSpotLight;
 	delete testPointLight;
 	delete testDirectionalLight;
+	delete terrainModel;
+	delete terrainObject;
+	delete terrainTexture;
+	delete terrainNormalMap;
 
 	device->Release();
 	deviceContext->Release();
@@ -229,6 +245,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	deferredLightInputLayout->Release();
 	deferredGeometryBlendState->Release();
 	deferredLightBlendState->Release();
+
+	delete[] heights;
 #pragma endregion
 
 	// returns parameter of WM_QUIT message
@@ -394,6 +412,47 @@ void Update()
 	XMVector3Normalize(cameraTranslation);
 
 	XMVECTOR newPos = mainCamera->GetPosition() + cameraTranslation * 2;
+
+	float cx = XMVectorGetX(newPos);
+	float cy = XMVectorGetY(newPos);
+	float cz = XMVectorGetZ(newPos);
+
+	if (cx >= terrainSize / 2.0f)
+		cx = terrainSize / 2.0f - 0.0001f;
+	if (cx < -terrainSize / 2.0f)
+		cx = -terrainSize / 2.0f;
+	if (cz >= terrainSize / 2.0f)
+		cz = terrainSize / 2.0f - 0.0001f;
+	if (cz < -terrainSize / 2.0f)
+		cz = -terrainSize / 2.0f;
+
+	// find row and column in terrain
+	float terrainStepX = terrainSize / (float)(terrainVertexWidth - 1);
+	float terrainStepY = terrainSize / (float)(terrainVertexHeight - 1);
+
+	float cameraRowf = (-cz + (terrainSize / 2.0f)) / terrainStepY;
+	float cameraColumnf = (cx + (terrainSize / 2.0f)) / terrainStepX;
+
+	int cameraRow = (int)cameraRowf;
+	int cameraColumn = (int)cameraColumnf;
+
+	cameraRowf -= cameraRow;
+	cameraColumnf -= cameraColumn;
+
+	int sampleIndices[] = { cameraRow * (terrainVertexWidth) + cameraColumn,
+							cameraRow * terrainVertexWidth + cameraColumn + 1,
+							(cameraRow + 1) * terrainVertexWidth + cameraColumn,
+							(cameraRow + 1) * terrainVertexWidth + cameraColumn + 1 };
+
+	float interpolatedHeight = ((heights[sampleIndices[0]] * 2.0f - 1.0f) * (1.0f - cameraColumnf) +
+		(heights[sampleIndices[1]] * 2.0f - 1.0f) * (cameraColumnf)) * (1.0f - cameraRowf)
+		+
+		((heights[sampleIndices[2]] * 2.0f - 1.0f) * (1.0f - cameraColumnf) +
+			(heights[sampleIndices[3]] * 2.0f - 1.0f) * (cameraColumnf)) * (cameraRowf);
+
+	cy = interpolatedHeight * terrainHeight + 1.0f;
+
+	newPos = XMVectorSet(cx, cy, cz, XMVectorGetW(newPos));
 
 	mainCamera->SetPosition(deviceContext, newPos);
 
@@ -656,8 +715,8 @@ void SetupDeferredRendering()
 #pragma endregion
 
 #pragma region camera
-	XMFLOAT3 camPos = XMFLOAT3(0.0f, 0.0f, -5.0f);
-	mainCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.5f, 20.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
+	XMFLOAT3 camPos = XMFLOAT3(-1.5f, 0.0f, 4.5f);
+	mainCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 40.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
 #pragma endregion
 
 #pragma region geometry
@@ -672,10 +731,12 @@ void SetupDeferredRendering()
 	LoadOBJ("box.obj", vertices, numVertices, indices, numIndices);
 	boxModel = Model::CreateModel(device, vertices, numVertices, indices, numIndices, 48, boxTexture, boxNormalMap);
 
-	boxObject = RenderObject::CreateRenderObject(device, boxModel);
+	boxObject = RenderObject::CreateRenderObject(device, boxModel, readObjectColor("box.mtl"));
 
 	delete[] vertices;
 	delete[] indices;
+
+	CreateTerrain("terrain.tga", terrainSize, terrainHeight, "terrainTexture.tga", "terrainNormalMap.tga", terrainVertexWidth, terrainVertexHeight, heights, numHeights);
 #pragma endregion
 
 #pragma region ambient light buffer
@@ -793,6 +854,222 @@ void SetupDeferredRendering()
 #pragma endregion
 }
 
+void CreateTerrain(char* heightMapName, float size, float heightRange, char* textureName, char* normalMapName, int& terrainVertexWidth, int& terrainVertexHeight, float*& heights, UINT& numHeights)
+{
+	// load heightmap
+	std::ifstream textureFile;
+	textureFile.open(heightMapName, std::ios::binary | std::ios::in);
+
+	typedef struct
+	{
+		char idLength;
+		char colorMapType;
+		char imageTypeCode;
+		char colorMapSpecification[5];
+		char imageOrigin[4];
+		short int width;
+		short int height;
+		char pixelSize;
+		char imageDescriptorByte;
+	} tgaHeader;
+	tgaHeader textureHeader;
+	textureFile.read((char*)&textureHeader, 18);
+
+	terrainVertexWidth = textureHeader.width;
+	terrainVertexHeight = textureHeader.height;
+	numHeights = textureHeader.width * textureHeader.height;
+
+	float* heightData = new float[textureHeader.width * textureHeader.height];
+	heights = heightData;
+
+	// read pixel data
+	int column = 0;
+	int row = textureHeader.height - 1;
+	unsigned char readR, readG, readB, readA;
+	unsigned char header;
+	while (!textureFile.read((char*)&header, 1).eof())
+	{
+		if ((header & 0x80) == 0x80) // run-length packet
+		{
+			textureFile.read((char*)&readB, 1);
+			textureFile.read((char*)&readG, 1);
+			textureFile.read((char*)&readR, 1);
+			textureFile.read((char*)&readA, 1);
+
+			for (int i = 0; i < (header & 0x7F) + 1; i++)
+			{
+				heightData[row * textureHeader.width + column] = ((float)readR) / 255;
+
+				column++;
+				if (column >= textureHeader.width)
+				{
+					column -= textureHeader.width;
+					row--;
+				}
+			}
+		}
+		else if ((header & 0x80) == 0x00) // raw packet
+		{
+			for (int i = 0; i < (header & 0x7F) + 1; i++)
+			{
+				textureFile.read((char*)&readB, 1);
+				textureFile.read((char*)&readG, 1);
+				textureFile.read((char*)&readR, 1);
+				textureFile.read((char*)&readA, 1);
+
+				heightData[row * textureHeader.width + column] = ((float)readR) / 255;
+
+				column++;
+				if (column >= textureHeader.width)
+				{
+					column -= textureHeader.width;
+					row--;
+				}
+			}
+		}
+	}
+	textureFile.close();
+
+#pragma region positions+indices
+	// create vertex + uv positions and indices
+	float offset = size / 2.0f;
+	int numVertices = textureHeader.height * textureHeader.width;
+	row = 0;
+	column = 0;
+	NormalUVVertex* vertices = new NormalUVVertex[numVertices];
+
+	for (int i = 0; i < numVertices; i++)
+	{
+		vertices[i].UV.x = ((float)(i % textureHeader.width)) / ((float)textureHeader.width - 1.0f);
+		vertices[i].UV.y = ((float)(i / textureHeader.width)) / ((float)textureHeader.height - 1.0f);
+		vertices[i].UV.z = 0.0f;
+
+		vertices[i].position.x = vertices[i].UV.x * size - offset;
+		vertices[i].position.z = (1.0f - vertices[i].UV.y) * size - offset;
+
+		vertices[i].position.y = (heightData[i] * 2.0f - 1.0f) * heightRange;
+	}
+
+	int numIndices = ((textureHeader.width - 1) * (textureHeader.height - 1)) * 6;
+
+	UINT* indices = new UINT[numIndices];
+	UINT counter = 0;
+
+	for (UINT column = 0; column < ((UINT)textureHeader.width - 1); column++)
+	{
+		for (UINT row = 0; row < ((UINT)textureHeader.height - 1); row++)
+		{
+			indices[counter] = column + row * textureHeader.width; counter++;
+			indices[counter] = column + row * textureHeader.width + 1; counter++;
+			indices[counter] = column + (row + 1) * textureHeader.width; counter++;
+			
+
+			indices[counter] = column + row * textureHeader.width + 1; counter++;
+			indices[counter] = column + (row + 1) * textureHeader.width + 1; counter++;
+			indices[counter] = column + (row + 1) * textureHeader.width; counter++;
+		}
+	}
+#pragma endregion
+
+#pragma region normals+tangents
+	// calculate normals and tangents
+	std::list<XMVECTOR>* adjacentFaceTangents = new std::list<XMVECTOR>[numVertices];
+	std::list<XMVECTOR>* adjacentFaceNormals = new std::list<XMVECTOR>[numVertices];
+
+	for (int i = 0; i < numIndices; i += 3)
+	{
+		int V0 = indices[i];
+		int V1 = indices[i + 1];
+		int V2 = indices[i + 2];
+
+		// calculate face normal
+		XMVECTOR faceNormal = XMVector3Normalize( XMVector3Cross(XMVectorSet(vertices[V1].position.x - vertices[V0].position.x,
+																			 vertices[V1].position.y - vertices[V0].position.y,
+																			 vertices[V1].position.z - vertices[V0].position.z, 0.0f), 
+																 XMVectorSet(vertices[V2].position.x - vertices[V0].position.x,
+																			 vertices[V2].position.y - vertices[V0].position.y,
+																			 vertices[V2].position.z - vertices[V0].position.z, 0.0f)));
+
+		// calculate face tangent
+		float du0 = vertices[V1].UV.x - vertices[V0].UV.x;
+		float du1 = vertices[V2].UV.x - vertices[V0].UV.x;
+		float dv0 = vertices[V1].UV.y - vertices[V0].UV.y;
+		float dv1 = vertices[V2].UV.y - vertices[V0].UV.y;
+
+		float divisor = 1.0f / (du0 * dv1 - dv0 * du1);
+
+		XMVECTOR faceTangent = XMVectorSet(divisor * (dv1 * (vertices[V1].position.x - vertices[V0].position.x)
+			- dv0 * (vertices[V2].position.x - vertices[V0].position.x)),
+
+			divisor * (dv1 * (vertices[V1].position.y - vertices[V0].position.y)
+				- dv0 * (vertices[V2].position.y - vertices[V0].position.y)),
+
+			divisor * (dv1 * (vertices[V1].position.z - vertices[V0].position.z)
+				- dv0 * (vertices[V2].position.z - vertices[V0].position.z)),
+			0.0f);
+
+		faceTangent = XMVector3Normalize(faceTangent);
+
+
+		adjacentFaceNormals[V0].push_back(faceNormal);
+		adjacentFaceNormals[V1].push_back(faceNormal);
+		adjacentFaceNormals[V2].push_back(faceNormal);
+
+		adjacentFaceTangents[V0].push_back(faceTangent);
+		adjacentFaceTangents[V1].push_back(faceTangent);
+		adjacentFaceTangents[V2].push_back(faceTangent);
+	}
+
+	// empty lists and average tangents
+	for (int i = 0; i < numVertices; i++)
+	{
+		XMVECTOR averagedNormal = XMVectorReplicate(0.0f);
+
+		int listSize = adjacentFaceNormals[i].size();
+
+		for (int j = 0; j < listSize; j++)
+		{
+			averagedNormal += adjacentFaceNormals[i].front();
+			adjacentFaceNormals[i].pop_front();
+		}
+
+		averagedNormal = XMVector3Normalize(averagedNormal);
+
+		XMStoreFloat3(&(vertices[i].normal), averagedNormal);
+
+
+		XMVECTOR averagedTangent = XMVectorReplicate(0.0f);
+
+		listSize = adjacentFaceTangents[i].size();
+
+		for (int j = 0; j < listSize; j++)
+		{
+			averagedTangent += adjacentFaceTangents[i].front();
+			adjacentFaceTangents[i].pop_front();
+		}
+
+		averagedTangent = XMVector3Normalize(averagedTangent);
+
+		XMStoreFloat3(&(vertices[i].tangent), averagedTangent);
+	}
+
+	// remove list
+	delete[] adjacentFaceTangents;
+#pragma endregion
+
+	// create texture and normal map
+	terrainTexture = Texture::CreateTexture(device, textureName);
+	terrainNormalMap = Texture::CreateTexture(device, normalMapName);
+
+	// create model
+	terrainModel = Model::CreateModel(device, vertices, numVertices, indices, numIndices, 48, terrainTexture, terrainNormalMap);
+
+	// create renderobject
+	terrainObject = RenderObject::CreateRenderObject(device, terrainModel, XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f));
+
+	delete[] vertices;
+}
+
 void RenderDeferredRendering()
 {
 	// geo
@@ -825,6 +1102,7 @@ void RenderDeferredRendering()
 	// set world buffers + vertex/index buffers + render objects
 	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
+	terrainObject->Render(deviceContext, &vertexSize);
 	// ...
 
 
@@ -1264,4 +1542,38 @@ void CreateLightGeometry()
 	indexData = indx;
 
 	directionalLightModel = Model::CreateModel(device, verData, numVertices, indexData, numIndices, 12, nullptr, nullptr);
+}
+
+XMFLOAT4 readObjectColor(char* materialFileName)
+{
+	std::ifstream file(materialFileName);
+
+	std::string str;
+
+	XMFLOAT4 readColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	file >> str;
+
+	while (!file.eof())
+	{
+		if (str == "color")
+		{
+			file >> str;
+			readColor.x = std::stof(str, nullptr);
+
+			file >> str;
+			readColor.y = std::stof(str, nullptr);
+
+			file >> str;
+			readColor.z = std::stof(str, nullptr);
+		}
+		else	// discard
+		{
+			std::getline(file, str);
+		}
+
+		file >> str;
+	}
+
+	return readColor;
 }

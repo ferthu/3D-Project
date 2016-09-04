@@ -243,7 +243,7 @@ void* SpotLight::prepareBufferData()
 
 	XMFLOAT3 edgeDotValues;
 	XMFLOAT3 forward = XMFLOAT3(0, 0, 1);
-	XMFLOAT3 edge = XMFLOAT3(sqrtf(2.0f), 0, sqrtf(2.0f));
+	XMFLOAT3 edge = XMFLOAT3(1.0f / sqrtf(2.0f), 0, 1.0f / sqrtf(2.0f));
 	XMMATRIX scaling = XMMatrixScaling(coneSize, coneSize, range);
 	XMStoreFloat3(&edge, XMVector3Transform(XMLoadFloat3(&edge), scaling));
 	XMStoreFloat3(&edgeDotValues, XMVector3Dot(XMLoadFloat3(&forward), XMVector3Normalize(XMLoadFloat3(&edge))));

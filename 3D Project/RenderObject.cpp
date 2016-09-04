@@ -15,6 +15,7 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 	// set constant buffers
 	deviceContext->VSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
 	deviceContext->GSSetConstantBuffers(0, 1, &worldMatrixBuffer);		// slot 0 world matrix
+	deviceContext->PSSetConstantBuffers(0, 1, &objectColorBuffer);
 
 	if (model->texture != nullptr)
 		deviceContext->PSSetShaderResources(0, 1, &(model->texture->textureView));
@@ -25,11 +26,12 @@ void RenderObject::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
 	deviceContext->DrawIndexed(model->numIndices, 0, 0);
 }
 
-RenderObject::RenderObject(ID3D11Device* device, Model* model)
+RenderObject::RenderObject(ID3D11Device* device, Model* model, XMFLOAT4 objectColor)
 {
 	this->model = model;
 	XMStoreFloat4x4(&worldMatrix, XMMatrixIdentity());
 	vertexBufferOffset = 0;
+	this->objectColor = objectColor;
 
 	// create description of world matrix buffer
 	D3D11_BUFFER_DESC worldMatrixBufferDescription;
@@ -48,16 +50,35 @@ RenderObject::RenderObject(ID3D11Device* device, Model* model)
 
 	// create world matrix buffer
 	device->CreateBuffer(&worldMatrixBufferDescription, &worldMatrixBufferData, &worldMatrixBuffer);
+
+	// create description of object color buffer
+	D3D11_BUFFER_DESC objectColorBufferDescription;
+	objectColorBufferDescription.Usage = D3D11_USAGE_DYNAMIC;
+	objectColorBufferDescription.ByteWidth = sizeof(XMFLOAT4);
+	objectColorBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	objectColorBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	objectColorBufferDescription.MiscFlags = 0;
+	objectColorBufferDescription.StructureByteStride = 0;
+
+	// create object color buffer
+	D3D11_SUBRESOURCE_DATA objectColorBufferData;
+	objectColorBufferData.pSysMem = &objectColor;
+	objectColorBufferData.SysMemPitch = 0;
+	objectColorBufferData.SysMemSlicePitch = 0;
+
+	// create object color buffer
+	device->CreateBuffer(&objectColorBufferDescription, &objectColorBufferData, &objectColorBuffer);
 }
 
-RenderObject* RenderObject::CreateRenderObject(ID3D11Device* device, Model* model)
+RenderObject* RenderObject::CreateRenderObject(ID3D11Device* device, Model* model, XMFLOAT4 objectColor)
 {
-	return new RenderObject(device, model);
+	return new RenderObject(device, model, objectColor);
 }
 
 RenderObject::~RenderObject()
 {
 	worldMatrixBuffer->Release();
+	objectColorBuffer->Release();
 }
 
 XMMATRIX& RenderObject::GetWorldMatrix()

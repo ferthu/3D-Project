@@ -14,6 +14,7 @@ struct PSoutput
 	float4 normalWS : SV_Target2;
 };
 
+float4 objectColor : register (b0);
 Texture2D tex : register(t0);
 Texture2D normalMap : register(t1);
 SamplerState samp;
@@ -22,7 +23,7 @@ PSoutput main(GSoutput input)
 {
 	PSoutput output;
 
-	output.color = tex.Sample(samp, input.uv);
+	output.color = tex.Sample(samp, input.uv) * objectColor;
 	output.positionWS = float4(input.positionWS, 1.0f);
 
 
