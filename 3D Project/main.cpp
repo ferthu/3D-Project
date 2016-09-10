@@ -15,6 +15,8 @@
 #include "VertexStructureDefinitions.h"
 #include "Texture.h"
 #include "LightClasses.h"
+#include "Shapes.h"
+#include "AABB.h"
 
 using namespace DirectX;
 
@@ -59,7 +61,11 @@ SpotLight* testSpotLight = nullptr;
 PointLight* testPointLight = nullptr;
 DirectionalLight* testDirectionalLight = nullptr;
 
+bool useObserverCamera = false;
 Camera* mainCamera = nullptr;
+Camera* observerCamera = nullptr;
+
+AABB* quadTree = nullptr;
 
 Model* boxModel = nullptr;
 RenderObject* boxObject = nullptr;
@@ -133,6 +139,9 @@ void LoadLightOBJ(std::string fileName, Vertex*& verticesArray, UINT& numVertice
 void CreateLightGeometry();
 XMFLOAT4 readObjectColor(char* materialFileName);
 void CreateTerrain(char* heightMapName, float size, float heightRange, char* textureName, char* normalMapName, int& terrainVertexWidth, int& terrainVertexHeight, float*& heights, UINT& numHeights);
+AABB* createQuadTree(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, ID3D11Device* device, Model* objectModel, XMFLOAT4 objectColor, UINT levels);
+
+
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
 {
@@ -200,6 +209,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	delete testCam;
 	delete testTexture;
 	delete mainCamera;
+	delete observerCamera;
 	delete boxModel;
 	delete boxObject;
 	delete boxTexture;
@@ -214,6 +224,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	delete terrainObject;
 	delete terrainTexture;
 	delete terrainNormalMap;
+	delete quadTree;
 
 	device->Release();
 	deviceContext->Release();
@@ -408,6 +419,9 @@ void Update()
 
 	if (GetKeyState('Q') & 0x8000)
 		cameraTranslation -= XMLoadFloat3(&up);
+
+	if (GetKeyState('R') & 0x8000)
+		useObserverCamera ? useObserverCamera = false : useObserverCamera = true;
 
 	XMVector3Normalize(cameraTranslation);
 
@@ -717,6 +731,9 @@ void SetupDeferredRendering()
 #pragma region camera
 	XMFLOAT3 camPos = XMFLOAT3(-1.5f, 0.0f, 4.5f);
 	mainCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 40.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
+
+	camPos = XMFLOAT3(0.0f, 10.0f, -10.0f);
+	observerCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 40.0f, XMLoadFloat3(&camPos), XM_PIDIV4, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
 #pragma endregion
 
 #pragma region geometry
@@ -735,6 +752,8 @@ void SetupDeferredRendering()
 
 	delete[] vertices;
 	delete[] indices;
+
+	quadTree = createQuadTree(XMFLOAT3(50.0f, 5.0f, 50.0f), XMFLOAT3(-50.0f, 0.0f, -50.0f), device, boxModel, readObjectColor("box.mtl"), 4);
 
 	CreateTerrain("terrain.tga", terrainSize, terrainHeight, "terrainTexture.tga", "terrainNormalMap.tga", terrainVertexWidth, terrainVertexHeight, heights, numHeights);
 #pragma endregion
@@ -1091,7 +1110,8 @@ void RenderDeferredRendering()
 	deviceContext->PSSetShader(deferredGeometryPixelShader, nullptr, 0);
 
 	// set viewproj buffers
-	ID3D11Buffer* viewProjectionMatrices[] = { (mainCamera->viewMatrixBuffer), (mainCamera->projectionMatrixBuffer) };
+	ID3D11Buffer* viewProjectionMatrices[] = {	useObserverCamera ? (observerCamera->viewMatrixBuffer) : (mainCamera->viewMatrixBuffer), 
+												useObserverCamera ? (observerCamera->projectionMatrixBuffer) : (mainCamera->projectionMatrixBuffer) };
 	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 	deviceContext->GSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 
@@ -1103,6 +1123,7 @@ void RenderDeferredRendering()
 	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
 	terrainObject->Render(deviceContext, &vertexSize);
+	quadTree->Render(deviceContext, &vertexSize);
 	// ...
 
 
@@ -1120,7 +1141,8 @@ void RenderDeferredRendering()
 	deviceContext->GSSetShader(deferredLightGeometryShader, nullptr, 0);
 
 	// set viewproj buffers
-	ID3D11Buffer* lightViewProjectionMatrices[] = { (mainCamera->viewMatrixBuffer), (mainCamera->projectionMatrixBuffer) };
+	ID3D11Buffer* lightViewProjectionMatrices[] = { useObserverCamera ? (observerCamera->viewMatrixBuffer) : (mainCamera->viewMatrixBuffer),
+													useObserverCamera ? (observerCamera->projectionMatrixBuffer) : (mainCamera->projectionMatrixBuffer) };
 	deviceContext->VSSetConstantBuffers(1, 2, lightViewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 	deviceContext->GSSetConstantBuffers(1, 2, lightViewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 
@@ -1136,7 +1158,7 @@ void RenderDeferredRendering()
 	deviceContext->PSSetConstantBuffers(1, 1, &ambientLightColorBuffer);
 
 	// set camera position buffer
-	deviceContext->PSSetConstantBuffers(3, 1, &(mainCamera->cameraPositionBuffer));
+	deviceContext->PSSetConstantBuffers(3, 1, useObserverCamera ? &(observerCamera->cameraPositionBuffer) : &(mainCamera->cameraPositionBuffer));
 
 	// set world buffers + vertex/index buffers + render lights
 	vertexSize = 12;
@@ -1576,4 +1598,27 @@ XMFLOAT4 readObjectColor(char* materialFileName)
 	}
 
 	return readColor;
+}
+
+AABB* createQuadTree(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, ID3D11Device* device, Model* objectModel, XMFLOAT4 objectColor, UINT levels)
+{
+	AABB* newAABB = new AABB(maxCorner, minCorner);
+
+	if (levels > 0)
+	{
+		newAABB->nxpz = createQuadTree(XMFLOAT3(maxCorner.x, maxCorner.y, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f), XMFLOAT3(minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, minCorner.y, minCorner.z), device, objectModel, objectColor, levels - 1);
+		newAABB->pxpz = createQuadTree(maxCorner, XMFLOAT3(minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, minCorner.y, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f), device, objectModel, objectColor, levels - 1);;
+		newAABB->nxnz = createQuadTree(XMFLOAT3(minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, maxCorner.y, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f), minCorner, device, objectModel, objectColor, levels - 1);;
+		newAABB->pxnz = createQuadTree(XMFLOAT3(minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, maxCorner.y, maxCorner.z), XMFLOAT3(minCorner.x, minCorner.y, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f), device, objectModel, objectColor, levels - 1);;
+	}
+	else
+	{
+		newAABB->object = RenderObject::CreateRenderObject(device, objectModel, objectColor);
+		newAABB->object->SetWorldMatrix(deviceContext, XMMatrixSet(	1.0f, 0.0f, 0.0f, 0.0f,
+																	0.0f, 1.0f, 0.0f, 0.0f,
+																	0.0f, 0.0f, 1.0f, 0.0f,
+																	minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, minCorner.y + (maxCorner.y - minCorner.y) / 2.0f, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f, 1.0f));
+	}
+
+	return newAABB;
 }

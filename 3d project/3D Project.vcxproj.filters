@@ -62,6 +62,12 @@
     <ClInclude Include="LightClasses.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="AABB.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Shapes.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="DeferredGeometryVertex.hlsl">

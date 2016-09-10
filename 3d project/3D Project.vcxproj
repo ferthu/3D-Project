@@ -155,11 +155,13 @@
     <ClCompile Include="Texture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AABB.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="LightClasses.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="RenderConfiguration.h" />
     <ClInclude Include="RenderObject.h" />
+    <ClInclude Include="Shapes.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="VertexStructureDefinitions.h" />
   </ItemGroup>
