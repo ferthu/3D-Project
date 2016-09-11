@@ -66,6 +66,7 @@ Camera* mainCamera = nullptr;
 Camera* observerCamera = nullptr;
 
 AABB* quadTree = nullptr;
+Plane cameraPlanes[6];
 
 Model* boxModel = nullptr;
 RenderObject* boxObject = nullptr;
@@ -140,6 +141,7 @@ void CreateLightGeometry();
 XMFLOAT4 readObjectColor(char* materialFileName);
 void CreateTerrain(char* heightMapName, float size, float heightRange, char* textureName, char* normalMapName, int& terrainVertexWidth, int& terrainVertexHeight, float*& heights, UINT& numHeights);
 AABB* createQuadTree(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, ID3D11Device* device, Model* objectModel, XMFLOAT4 objectColor, UINT levels);
+void getCameraPlanes(Camera* camera);
 
 
 
@@ -472,6 +474,8 @@ void Update()
 
 	mainCamera->SetViewMatrix(deviceContext, mainCamera->CreateViewMatrix(mainCamera->GetPosition(), mainCamera->pitch, mainCamera->yaw));
 
+	getCameraPlanes(mainCamera);
+
 
 	previousMousePosition = currentMousePosition;
 }
@@ -520,7 +524,7 @@ void Render()
 void CreateTestInput()
 {
 	// create test lights
-	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
+	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 30.0f, pointLightModel);
 	testPointLight->Initialize();
 	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
 	testSpotLight->Initialize();
@@ -732,8 +736,8 @@ void SetupDeferredRendering()
 	XMFLOAT3 camPos = XMFLOAT3(-1.5f, 0.0f, 4.5f);
 	mainCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 40.0f, XMLoadFloat3(&camPos), 0.0f, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
 
-	camPos = XMFLOAT3(0.0f, 10.0f, -10.0f);
-	observerCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 40.0f, XMLoadFloat3(&camPos), XM_PIDIV4, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
+	camPos = XMFLOAT3(0.0f, 20.0f, -20.0f);
+	observerCamera = Camera::CreateCamera(device, deviceContext, XM_PI * 0.5f, 0.1f, 100.0f, XMLoadFloat3(&camPos), XM_PIDIV4, 0.0f, XM_PIDIV2 * 1.0f, -XM_PIDIV2 * 1.0f, ((float)windowHeight) / ((float)windowWidth));
 #pragma endregion
 
 #pragma region geometry
@@ -1123,7 +1127,7 @@ void RenderDeferredRendering()
 	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
 	terrainObject->Render(deviceContext, &vertexSize);
-	quadTree->Render(deviceContext, &vertexSize);
+	quadTree->Render(deviceContext, &vertexSize, cameraPlanes);
 	// ...
 
 
@@ -1621,4 +1625,62 @@ AABB* createQuadTree(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, ID3D11Device* devic
 	}
 
 	return newAABB;
+}
+
+void getCameraPlanes(Camera* camera)
+{
+	XMFLOAT4X4 m;
+
+	XMMATRIX proj = mainCamera->GetProjectionMatrix();
+	XMMATRIX view = mainCamera->GetViewMatrix();
+	XMMATRIX ma = XMMatrixMultiply(view, proj);
+
+	XMStoreFloat4x4(&m, ma);
+
+	// left plane
+	cameraPlanes[0].normal.x = -(m._14 + m._11);
+	cameraPlanes[0].normal.y = -(m._24 + m._21);
+	cameraPlanes[0].normal.z = -(m._34 + m._31);
+	cameraPlanes[0].distance = -(m._44 + m._41);
+
+	// right plane
+	cameraPlanes[1].normal.x = -(m._14 - m._11);
+	cameraPlanes[1].normal.y = -(m._24 - m._21);
+	cameraPlanes[1].normal.z = -(m._34 - m._31);
+	cameraPlanes[1].distance = -(m._44 - m._41);
+
+	// top plane
+	cameraPlanes[2].normal.x = -(m._14 - m._12);
+	cameraPlanes[2].normal.y = -(m._24 - m._22);
+	cameraPlanes[2].normal.z = -(m._34 - m._32);
+	cameraPlanes[2].distance = -(m._44 - m._42);
+
+	// bottom plane
+	cameraPlanes[3].normal.x = -(m._14 + m._12);
+	cameraPlanes[3].normal.y = -(m._24 + m._22);
+	cameraPlanes[3].normal.z = -(m._34 + m._32);
+	cameraPlanes[3].distance = -(m._44 + m._42);
+
+	// near plane
+	cameraPlanes[4].normal.x = -(m._14 + m._13);
+	cameraPlanes[4].normal.y = -(m._24 + m._23);
+	cameraPlanes[4].normal.z = -(m._34 + m._33);
+	cameraPlanes[4].distance = -(m._44 + m._43);
+
+	// far plane
+	cameraPlanes[5].normal.x = -(m._14 - m._13);
+	cameraPlanes[5].normal.y = -(m._24 - m._23);
+	cameraPlanes[5].normal.z = -(m._34 - m._33);
+	cameraPlanes[5].distance = -(m._44 - m._43);
+
+	// normalize
+	for (int i = 0; i < 6; i++)
+	{
+		float divisor = 1.0f / XMVectorGetX(XMVector3Length(XMLoadFloat3(&cameraPlanes[i].normal)));
+
+		cameraPlanes[i].normal.x *= divisor;
+		cameraPlanes[i].normal.y *= divisor;
+		cameraPlanes[i].normal.z *= divisor;
+		cameraPlanes[i].distance *= divisor;
+	}
 }

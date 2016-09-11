@@ -1,10 +1,15 @@
 #ifndef AABB_H
 #define AABB_H
 
+#include <windows.h>
 #include <d3d11.h>
 #include <DirectXMath.h>
+#include <d3dcompiler.h>
 
 #include "Shapes.h"
+#include "RenderObject.h"
+
+using namespace DirectX;
 
 class AABB
 {
@@ -17,40 +22,12 @@ public:
 	AABB* pxnz;
 	RenderObject* object;
 
-	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize)
-	{
-		if (object != nullptr)
-		{
-			object->Render(deviceContext, vertexSize);
-		}
-		else
-		{
-			nxpz->Render(deviceContext, vertexSize);
-			pxpz->Render(deviceContext, vertexSize);
-			nxnz->Render(deviceContext, vertexSize);
-			pxnz->Render(deviceContext, vertexSize);
-		}
-	}
+	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* cameraPlanes);
+	bool AABBPlaneIntersection(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, Plane plane);
 
-	AABB(XMFLOAT3 maxCorner, XMFLOAT3 minCorner)
-	{
-		this->maxCorner = maxCorner;
-		this->minCorner = minCorner;
-		nxpz = nullptr;
-		pxpz = nullptr;
-		nxnz = nullptr;
-		pxnz = nullptr;
-		object = nullptr;
-	}
+	AABB(XMFLOAT3 maxCorner, XMFLOAT3 minCorner);
 
-	~AABB()
-	{
-		delete object;
-		delete nxpz;
-		delete pxpz;
-		delete nxnz;
-		delete pxnz;
-	}
+	~AABB();
 };
 
 #endif

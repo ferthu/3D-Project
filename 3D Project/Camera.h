@@ -43,6 +43,7 @@ private:
 
 	XMFLOAT3 position;
 
+public:
 	XMFLOAT4X4 viewMatrix;
 	XMFLOAT4X4 projectionMatrix;
 };
