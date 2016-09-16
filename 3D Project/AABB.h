@@ -22,8 +22,9 @@ public:
 	AABB* pxnz;
 	RenderObject* object;
 
-	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* cameraPlanes);
+	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* cameraPlanes, float sphereRadius);
 	bool AABBPlaneIntersection(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, Plane plane);
+	bool AABBSphereIntersection(Plane plane, Sphere& sphere);
 
 	AABB(XMFLOAT3 maxCorner, XMFLOAT3 minCorner);
 

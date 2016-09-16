@@ -1127,7 +1127,7 @@ void RenderDeferredRendering()
 	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
 	terrainObject->Render(deviceContext, &vertexSize);
-	quadTree->Render(deviceContext, &vertexSize, cameraPlanes);
+	quadTree->Render(deviceContext, &vertexSize, cameraPlanes, std::sqrtf(3.0f));
 	// ...
 
 

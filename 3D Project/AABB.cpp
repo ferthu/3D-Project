@@ -2,11 +2,21 @@
 
 using namespace DirectX;
 
-void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* cameraPlanes)
+void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* cameraPlanes, float sphereRadius)
 {
 	if (object != nullptr)
 	{
-		object->Render(deviceContext, vertexSize);
+		Sphere objectSphere;
+		objectSphere.radius = sphereRadius;
+		objectSphere.center = XMFLOAT3(minCorner.x + (maxCorner.x - minCorner.x) / 2.0f, minCorner.y + (maxCorner.y - minCorner.y) / 2.0f, minCorner.z + (maxCorner.z - minCorner.z) / 2.0f);
+
+		bool render = true;
+		for (int i = 0; i < 6 && render; i++)
+		{
+			render = AABBSphereIntersection(cameraPlanes[i], objectSphere);
+		}
+		if (render)
+			object->Render(deviceContext, vertexSize);
 	}
 	else
 	{
@@ -16,7 +26,7 @@ void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* c
 			render = AABBPlaneIntersection(nxpz->maxCorner, nxpz->minCorner, cameraPlanes[i]);
 		}
 		if (render)
-			nxpz->Render(deviceContext, vertexSize, cameraPlanes);
+			nxpz->Render(deviceContext, vertexSize, cameraPlanes, sphereRadius);
 
 		render = true;
 		for (int i = 0; i < 6 && render; i++)
@@ -24,7 +34,7 @@ void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* c
 			render = AABBPlaneIntersection(pxpz->maxCorner, pxpz->minCorner, cameraPlanes[i]);
 		}
 		if (render)
-			pxpz->Render(deviceContext, vertexSize, cameraPlanes);
+			pxpz->Render(deviceContext, vertexSize, cameraPlanes, sphereRadius);
 
 		render = true;
 		for (int i = 0; i < 6 && render; i++)
@@ -32,7 +42,7 @@ void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* c
 			render = AABBPlaneIntersection(nxnz->maxCorner, nxnz->minCorner, cameraPlanes[i]);
 		}
 		if (render)
-			nxnz->Render(deviceContext, vertexSize, cameraPlanes);
+			nxnz->Render(deviceContext, vertexSize, cameraPlanes, sphereRadius);
 
 		render = true;
 		for (int i = 0; i < 6 && render; i++)
@@ -40,7 +50,7 @@ void AABB::Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize, Plane* c
 			render = AABBPlaneIntersection(pxnz->maxCorner, pxnz->minCorner, cameraPlanes[i]);
 		}
 		if (render)
-			pxnz->Render(deviceContext, vertexSize, cameraPlanes);
+			pxnz->Render(deviceContext, vertexSize, cameraPlanes, sphereRadius);
 
 	}
 }
@@ -86,4 +96,11 @@ bool AABB::AABBPlaneIntersection(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, Plane p
 		return false;
 	return true;
 
+}
+
+bool AABB::AABBSphereIntersection(Plane plane, Sphere& sphere)
+{
+	if(sphere.center.x * plane.normal.x + sphere.center.y * plane.normal.y + sphere.center.z * plane.normal.z - sphere.radius > -plane.distance)
+		return false;
+	return true;
 }
