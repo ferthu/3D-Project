@@ -16,6 +16,9 @@
     <Filter Include="Source Files\Shaders">
       <UniqueIdentifier>{90e308bc-691e-4a6f-a58e-693948a8e2ea}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Compute Shaders">
+      <UniqueIdentifier>{84a8bee9-70a6-4295-b963-4c2bb1c711e4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">

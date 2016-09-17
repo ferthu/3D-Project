@@ -24,7 +24,6 @@ using namespace DirectX;
 #pragma comment (lib, "d3dcompiler.lib")
 
 
-#pragma region variable declarations
 // will hold handle to window
 HWND windowHandle = 0;
 
@@ -41,6 +40,8 @@ ID3D11Device* device = nullptr;
 ID3D11DeviceContext* deviceContext = nullptr;
 IDXGISwapChain* swapChain = nullptr;
 ID3D11RenderTargetView* backBufferRenderTargetView;
+ID3D11ShaderResourceView* backBufferShaderResourceView;
+ID3D11UnorderedAccessView* backBufferUnorderedAccessView;
 ID3D11DepthStencilView* depthView;
 
 LARGE_INTEGER countFrequency;
@@ -53,7 +54,6 @@ float mouseSensitivity = 0.003f;
 
 float terrainSize = 20.0f;
 float terrainHeight = 5.0f;
-#pragma endregion
 
 Texture* testTexture = nullptr;
 Camera* testCam = nullptr;
@@ -62,6 +62,7 @@ PointLight* testPointLight = nullptr;
 DirectionalLight* testDirectionalLight = nullptr;
 
 bool useObserverCamera = false;
+bool blur = false;
 Camera* mainCamera = nullptr;
 Camera* observerCamera = nullptr;
 
@@ -101,6 +102,14 @@ ID3D11Texture2D* NormalBuffer = nullptr;
 ID3D11RenderTargetView* NormalBufferRenderTargetView = nullptr;
 ID3D11ShaderResourceView* NormalBufferShaderResourceView = nullptr;
 
+ID3D11Texture2D* blurredTexture = nullptr;
+ID3D11UnorderedAccessView* blurredTextureUnorderedAccessView = nullptr;
+ID3D11ShaderResourceView* blurredTextureShaderResourceView = nullptr;
+
+const int blurRadius = 5;
+float blurWeights[blurRadius * 2 + 1];
+ID3D11Buffer* blurWeightsBuffer;
+
 ID3D11InputLayout* deferredGeometryInputLayout = nullptr;
 ID3D11InputLayout* deferredLightInputLayout = nullptr;
 
@@ -113,6 +122,9 @@ ID3D11PixelShader* deferredGeometryPixelShader = nullptr;
 ID3D11PixelShader* deferredDirectionalLightPixelShader = nullptr;
 ID3D11PixelShader* deferredSpotLightPixelShader = nullptr;
 ID3D11PixelShader* deferredPointLightPixelShader = nullptr;
+
+ID3D11ComputeShader* horizontalBlurShader = nullptr;
+ID3D11ComputeShader* verticalBlurShader = nullptr;
 
 ID3D11RasterizerState* deferredGeometryRasterizerState = nullptr;
 ID3D11RasterizerState* deferredLightRasterizerState = nullptr;
@@ -258,6 +270,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	deferredLightInputLayout->Release();
 	deferredGeometryBlendState->Release();
 	deferredLightBlendState->Release();
+	blurredTexture->Release();
+	blurredTextureShaderResourceView->Release();
+	blurredTextureUnorderedAccessView->Release();
+	backBufferShaderResourceView->Release();
+	backBufferUnorderedAccessView->Release();
 
 	delete[] heights;
 #pragma endregion
@@ -322,7 +339,7 @@ void initializeD3D()
 	swapChainDesc.SampleDesc.Count		= msaaSamples;
 	swapChainDesc.SampleDesc.Quality	= msaaQualityLevels - 1;
 
-	swapChainDesc.BufferUsage	= DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapChainDesc.BufferUsage	= DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_UNORDERED_ACCESS;
 	swapChainDesc.BufferCount	= 1;
 	swapChainDesc.OutputWindow	= windowHandle;
 	swapChainDesc.Windowed		= true;
@@ -347,6 +364,24 @@ void initializeD3D()
 	ID3D11Texture2D* backBuffer;
 	swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**) &backBuffer);
 	device->CreateRenderTargetView(backBuffer, 0, &backBufferRenderTargetView);
+	
+	// create shader resource view for back buffer
+	D3D11_SHADER_RESOURCE_VIEW_DESC backBufferSRVDesc;
+	backBufferSRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	backBufferSRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	backBufferSRVDesc.Texture2D.MipLevels = 1;
+	backBufferSRVDesc.Texture2D.MostDetailedMip = 0;
+
+	device->CreateShaderResourceView(backBuffer, &backBufferSRVDesc, &backBufferShaderResourceView);
+
+	// create unordered access view for back buffer
+	D3D11_UNORDERED_ACCESS_VIEW_DESC backBufferUAVDesc;
+	backBufferUAVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	backBufferUAVDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+	backBufferUAVDesc.Texture2D.MipSlice = 0;
+
+	device->CreateUnorderedAccessView(backBuffer, &backBufferUAVDesc, &backBufferUnorderedAccessView);
+
 	backBuffer->Release();
 
 	// create depth buffer and view
@@ -423,7 +458,14 @@ void Update()
 		cameraTranslation -= XMLoadFloat3(&up);
 
 	if (GetKeyState('R') & 0x8000)
-		useObserverCamera ? useObserverCamera = false : useObserverCamera = true;
+		useObserverCamera = true;
+	else
+		useObserverCamera = false;
+
+	if (GetKeyState('f') & 0x8000)
+		blur = true;
+	else
+		blur = false;
 
 	XMVector3Normalize(cameraTranslation);
 
@@ -766,7 +808,7 @@ void SetupDeferredRendering()
 	XMFLOAT4 col = XMFLOAT4(0.025f, 0.025f, 0.025f, 0.0f);
 	ambientLightColor = XMLoadFloat4(&col);
 
-	// create description of world matrix buffer
+	// create description of ambient light color buffer
 	D3D11_BUFFER_DESC ambientLightColorBufferDescription;
 	ambientLightColorBufferDescription.Usage = D3D11_USAGE_IMMUTABLE;
 	ambientLightColorBufferDescription.ByteWidth = sizeof(ambientLightColor);
@@ -775,13 +817,13 @@ void SetupDeferredRendering()
 	ambientLightColorBufferDescription.MiscFlags = 0;
 	ambientLightColorBufferDescription.StructureByteStride = 0;
 
-	// create world matrix buffer
+	// create ambient light color buffer
 	D3D11_SUBRESOURCE_DATA ambientLightColorBufferData;
 	ambientLightColorBufferData.pSysMem = &ambientLightColor;
 	ambientLightColorBufferData.SysMemPitch = 0;
 	ambientLightColorBufferData.SysMemSlicePitch = 0;
 
-	// create world matrix buffer
+	// create ambient light color buffer
 	device->CreateBuffer(&ambientLightColorBufferDescription, &ambientLightColorBufferData, &ambientLightColorBuffer);
 #pragma endregion
 
@@ -874,6 +916,110 @@ void SetupDeferredRendering()
 	lightBlendStateDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 
 	device->CreateBlendState(&lightBlendStateDesc, &deferredLightBlendState);
+#pragma endregion
+
+#pragma region blurred texture
+	D3D11_TEXTURE2D_DESC desc;
+	desc.ArraySize = 1;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+	desc.CPUAccessFlags = 0;
+	desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	desc.Height = windowHeight;
+	desc.MipLevels = 0;
+	desc.MiscFlags = 0;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.Width = windowWidth;
+
+	device->CreateTexture2D(&desc, 0, &blurredTexture);
+
+	D3D11_UNORDERED_ACCESS_VIEW_DESC blurredTextureUAVDesc;
+	blurredTextureUAVDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	blurredTextureUAVDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+	blurredTextureUAVDesc.Texture2D.MipSlice = 0;
+
+	device->CreateUnorderedAccessView(blurredTexture, &blurredTextureUAVDesc, &blurredTextureUnorderedAccessView);
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC shadDesc;
+	shadDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	shadDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shadDesc.Texture2D.MipLevels = 1;
+	shadDesc.Texture2D.MostDetailedMip = 0;
+
+	device->CreateShaderResourceView(blurredTexture, &shadDesc, &blurredTextureShaderResourceView);
+#pragma endregion
+
+#pragma region blur weights
+	// fill weights array
+	float sigma = 2.0f;
+	float divisor = 1.0f / (std::sqrtf(2 * sigma * sigma * XM_PI));
+	float sum = 0;
+
+	for (int i = -blurRadius; i <= blurRadius; i++)
+	{
+		blurWeights[i + blurRadius] = divisor * std::expf(-( (i * i)/(2 * sigma * sigma) ));
+		sum += blurWeights[i + blurRadius];
+	}
+
+	for (int i = 0; i < blurRadius * 2 + 1; i++)
+	{
+		blurWeights[i] /= sum;
+	}
+
+	// create description of blur weights buffer
+	D3D11_BUFFER_DESC blurWeightsBufferDescription;
+	blurWeightsBufferDescription.Usage = D3D11_USAGE_IMMUTABLE;
+	blurWeightsBufferDescription.ByteWidth = sizeof(float) * (blurRadius * 2 + 1);
+	blurWeightsBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	blurWeightsBufferDescription.CPUAccessFlags = 0;
+	blurWeightsBufferDescription.MiscFlags = 0;
+	blurWeightsBufferDescription.StructureByteStride = 0;
+
+	// create blur weights buffer
+	D3D11_SUBRESOURCE_DATA blurWeightsBufferData;
+	blurWeightsBufferData.pSysMem = &blurWeights;
+	blurWeightsBufferData.SysMemPitch = 0;
+	blurWeightsBufferData.SysMemSlicePitch = 0;
+
+	// create blur weights buffer
+	device->CreateBuffer(&blurWeightsBufferDescription, &blurWeightsBufferData, &blurWeightsBuffer);
+#pragma endregion
+
+#pragma region compute shaders
+	ID3DBlob* cs = nullptr;
+
+	D3DCompileFromFile(
+		L"HorizontalBlurCompute.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"cs_4_0",
+		0, 0,
+		&cs,
+		nullptr);
+
+	device->CreateComputeShader(
+		cs->GetBufferPointer(),
+		cs->GetBufferSize(),
+		nullptr,
+		&horizontalBlurShader);
+
+	D3DCompileFromFile(
+		L"VerticalBlurCompute.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"cs_4_0",
+		0, 0,
+		&cs,
+		nullptr);
+
+	device->CreateComputeShader(
+		cs->GetBufferPointer(),
+		cs->GetBufferSize(),
+		nullptr,
+		&verticalBlurShader);
 #pragma endregion
 }
 
@@ -1128,7 +1274,6 @@ void RenderDeferredRendering()
 	boxObject->Render(deviceContext, &vertexSize);
 	terrainObject->Render(deviceContext, &vertexSize);
 	quadTree->Render(deviceContext, &vertexSize, cameraPlanes, std::sqrtf(3.0f));
-	// ...
 
 
 	// lights
@@ -1179,6 +1324,35 @@ void RenderDeferredRendering()
 	// point lights
 	deviceContext->PSSetShader(deferredPointLightPixelShader, nullptr, 0);
 	testPointLight->Render(deviceContext, &vertexSize);
+
+
+	// blur
+	if (blur)
+	{
+		UINT threadsPerGroup = 256;
+
+		// horizontal blur
+		deviceContext->CSSetShader(horizontalBlurShader, nullptr, 0);
+
+		deviceContext->CSSetConstantBuffers(0, 1, &blurWeightsBuffer);
+
+		deviceContext->CSGetShaderResources(0, 1, &backBufferShaderResourceView);
+
+		deviceContext->CSSetUnorderedAccessViews(0, 1, &blurredTextureUnorderedAccessView, 0);
+
+		deviceContext->Dispatch((UINT)std::ceilf(windowWidth / ((float)threadsPerGroup)), windowHeight, 1);
+
+		// vertical blur
+		deviceContext->CSSetShader(verticalBlurShader, nullptr, 0);
+
+		deviceContext->CSSetConstantBuffers(0, 1, &blurWeightsBuffer);
+
+		deviceContext->CSGetShaderResources(0, 1, &blurredTextureShaderResourceView);
+
+		deviceContext->CSSetUnorderedAccessViews(0, 1, &backBufferUnorderedAccessView, 0);
+
+		deviceContext->Dispatch(windowWidth, (UINT)std::ceilf(windowHeight / ((float)threadsPerGroup)), 1);
+	}
 }
 
 void CreateGBuffer(ID3D11Texture2D** texture, ID3D11RenderTargetView** renderTargetView, ID3D11ShaderResourceView** shaderResourceView)
