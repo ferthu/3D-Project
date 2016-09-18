@@ -106,8 +106,8 @@ ID3D11Texture2D* blurredTexture = nullptr;
 ID3D11UnorderedAccessView* blurredTextureUnorderedAccessView = nullptr;
 ID3D11ShaderResourceView* blurredTextureShaderResourceView = nullptr;
 
-const int blurRadius = 5;
-float blurWeights[blurRadius * 2 + 1];
+const int blurRadius = 50;
+XMFLOAT4 blurWeights[blurRadius * 2 + 1];
 ID3D11Buffer* blurWeightsBuffer;
 
 ID3D11InputLayout* deferredGeometryInputLayout = nullptr;
@@ -462,7 +462,7 @@ void Update()
 	else
 		useObserverCamera = false;
 
-	if (GetKeyState('f') & 0x8000)
+	if (GetKeyState('F') & 0x8000)
 		blur = true;
 	else
 		blur = false;
@@ -952,25 +952,25 @@ void SetupDeferredRendering()
 
 #pragma region blur weights
 	// fill weights array
-	float sigma = 2.0f;
+	float sigma = 50.0f;
 	float divisor = 1.0f / (std::sqrtf(2 * sigma * sigma * XM_PI));
 	float sum = 0;
 
 	for (int i = -blurRadius; i <= blurRadius; i++)
 	{
-		blurWeights[i + blurRadius] = divisor * std::expf(-( (i * i)/(2 * sigma * sigma) ));
-		sum += blurWeights[i + blurRadius];
+		blurWeights[i + blurRadius].x = divisor * std::expf(-( (i * i)/(2 * sigma * sigma) ));
+		sum += blurWeights[i + blurRadius].x;
 	}
 
 	for (int i = 0; i < blurRadius * 2 + 1; i++)
 	{
-		blurWeights[i] /= sum;
+		blurWeights[i].x /= sum;
 	}
 
 	// create description of blur weights buffer
 	D3D11_BUFFER_DESC blurWeightsBufferDescription;
 	blurWeightsBufferDescription.Usage = D3D11_USAGE_IMMUTABLE;
-	blurWeightsBufferDescription.ByteWidth = sizeof(float) * (blurRadius * 2 + 1);
+	blurWeightsBufferDescription.ByteWidth = sizeof(XMFLOAT4) * (blurRadius * 2 + 1);
 	blurWeightsBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	blurWeightsBufferDescription.CPUAccessFlags = 0;
 	blurWeightsBufferDescription.MiscFlags = 0;
@@ -994,7 +994,7 @@ void SetupDeferredRendering()
 		nullptr,
 		nullptr,
 		"main",
-		"cs_4_0",
+		"cs_5_0",
 		0, 0,
 		&cs,
 		nullptr);
@@ -1010,7 +1010,7 @@ void SetupDeferredRendering()
 		nullptr,
 		nullptr,
 		"main",
-		"cs_4_0",
+		"cs_5_0",
 		0, 0,
 		&cs,
 		nullptr);
@@ -1331,27 +1331,44 @@ void RenderDeferredRendering()
 	{
 		UINT threadsPerGroup = 256;
 
+		// clear in/outputs
+		ID3D11ShaderResourceView* emptySRV[1] = { nullptr };
+		ID3D11UnorderedAccessView* emptyUAV[1] = { nullptr };
+		ID3D11RenderTargetView* emptyRTV[1] = { nullptr };
+		deviceContext->OMSetRenderTargets(1, emptyRTV, depthView);
+		deviceContext->CSSetShaderResources(0, 1, emptySRV);
+		deviceContext->CSSetUnorderedAccessViews(0, 1, emptyUAV, 0);
+
 		// horizontal blur
 		deviceContext->CSSetShader(horizontalBlurShader, nullptr, 0);
 
 		deviceContext->CSSetConstantBuffers(0, 1, &blurWeightsBuffer);
 
-		deviceContext->CSGetShaderResources(0, 1, &backBufferShaderResourceView);
+		deviceContext->CSSetShaderResources(0, 1, &backBufferShaderResourceView);
 
 		deviceContext->CSSetUnorderedAccessViews(0, 1, &blurredTextureUnorderedAccessView, 0);
 
 		deviceContext->Dispatch((UINT)std::ceilf(windowWidth / ((float)threadsPerGroup)), windowHeight, 1);
+
+
+		// clear in/outputs
+		deviceContext->CSSetShaderResources(0, 1, emptySRV);
+		deviceContext->CSSetUnorderedAccessViews(0, 1, emptyUAV, 0);
 
 		// vertical blur
 		deviceContext->CSSetShader(verticalBlurShader, nullptr, 0);
 
 		deviceContext->CSSetConstantBuffers(0, 1, &blurWeightsBuffer);
 
-		deviceContext->CSGetShaderResources(0, 1, &blurredTextureShaderResourceView);
+		deviceContext->CSSetShaderResources(0, 1, &blurredTextureShaderResourceView);
 
 		deviceContext->CSSetUnorderedAccessViews(0, 1, &backBufferUnorderedAccessView, 0);
 
 		deviceContext->Dispatch(windowWidth, (UINT)std::ceilf(windowHeight / ((float)threadsPerGroup)), 1);
+
+		// clear in/outputs
+		deviceContext->CSSetShaderResources(0, 1, emptySRV);
+		deviceContext->CSSetUnorderedAccessViews(0, 1, emptyUAV, 0);
 	}
 }
 

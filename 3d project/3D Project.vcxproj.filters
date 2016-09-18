@@ -103,5 +103,11 @@
     <FxCompile Include="DeferredDirectionalLightGeometry.hlsl">
       <Filter>Source Files\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="HorizontalBlurCompute.hlsl">
+      <Filter>Source Files\Compute Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="VerticalBlurCompute.hlsl">
+      <Filter>Source Files\Compute Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
