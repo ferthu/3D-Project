@@ -27,8 +27,10 @@ using namespace DirectX;
 // will hold handle to window
 HWND windowHandle = 0;
 
-UINT windowWidth = 800;
-UINT windowHeight = 600;
+UINT windowWidth = 1800;
+UINT windowHeight = 900;
+
+D3D11_VIEWPORT viewPort;
 
 const bool DEBUG = true;
 
@@ -68,6 +70,17 @@ Camera* observerCamera = nullptr;
 
 AABB* quadTree = nullptr;
 Plane cameraPlanes[6];
+Plane directionalLightPlanes[6];
+float shadowAreaWidth = 30.0f;
+float shadowAreaHeight = 30.0f;
+float shadowAreaNear = 0.5f;
+float shadowAreaFar = 50.0f;
+UINT shadowMapSize = 1024;
+D3D11_VIEWPORT shadowViewPort;
+
+float previousFrameTime = 0.0f;
+
+ID3D11SamplerState* shadowSampler;
 
 Model* boxModel = nullptr;
 RenderObject* boxObject = nullptr;
@@ -123,11 +136,14 @@ ID3D11PixelShader* deferredDirectionalLightPixelShader = nullptr;
 ID3D11PixelShader* deferredSpotLightPixelShader = nullptr;
 ID3D11PixelShader* deferredPointLightPixelShader = nullptr;
 
+ID3D11VertexShader* shadowMappingVertexShader = nullptr;
+
 ID3D11ComputeShader* horizontalBlurShader = nullptr;
 ID3D11ComputeShader* verticalBlurShader = nullptr;
 
 ID3D11RasterizerState* deferredGeometryRasterizerState = nullptr;
 ID3D11RasterizerState* deferredLightRasterizerState = nullptr;
+ID3D11RasterizerState* shadowMappingRasterizerState = nullptr;
 
 ID3D11DepthStencilState* deferredGeometryDepthState = nullptr;
 ID3D11DepthStencilState* deferredLightDepthState = nullptr;
@@ -154,7 +170,7 @@ XMFLOAT4 readObjectColor(char* materialFileName);
 void CreateTerrain(char* heightMapName, float size, float heightRange, char* textureName, char* normalMapName, int& terrainVertexWidth, int& terrainVertexHeight, float*& heights, UINT& numHeights);
 AABB* createQuadTree(XMFLOAT3 maxCorner, XMFLOAT3 minCorner, ID3D11Device* device, Model* objectModel, XMFLOAT4 objectColor, UINT levels);
 void getCameraPlanes(Camera* camera);
-
+void getShadowAreaPlanes();
 
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int showCommand)
@@ -270,11 +286,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, int
 	deferredLightInputLayout->Release();
 	deferredGeometryBlendState->Release();
 	deferredLightBlendState->Release();
+	shadowMappingRasterizerState->Release();
 	blurredTexture->Release();
 	blurredTextureShaderResourceView->Release();
 	blurredTextureUnorderedAccessView->Release();
 	backBufferShaderResourceView->Release();
 	backBufferUnorderedAccessView->Release();
+	shadowMappingVertexShader->Release();
+	shadowSampler->Release();
 
 	delete[] heights;
 #pragma endregion
@@ -407,7 +426,6 @@ void initializeD3D()
 	deviceContext->OMSetRenderTargets(1, &backBufferRenderTargetView, depthView);
 
 	// create viewport
-	D3D11_VIEWPORT viewPort;
 	viewPort.Width = (float) windowWidth;
 	viewPort.Height = (float) windowHeight;
 	viewPort.TopLeftX = 0;
@@ -419,7 +437,7 @@ void initializeD3D()
 
 	// release resources
 	depthBuffer->Release();
-	depthView->Release();
+	//depthView->Release();
 }
 
 void Update()
@@ -518,6 +536,14 @@ void Update()
 
 	getCameraPlanes(mainCamera);
 
+	XMFLOAT4X4 boxWorldMatrix;
+	XMStoreFloat4x4(&boxWorldMatrix, boxObject->GetWorldMatrix());
+
+	boxWorldMatrix._41 = sinf(currentTime.QuadPart * 0.000001f);
+	boxWorldMatrix._42 = sinf(currentTime.QuadPart * 0.0000001f);
+	boxWorldMatrix._43 = cosf(currentTime.QuadPart * 0.000001f);
+
+	boxObject->SetWorldMatrix(deviceContext, XMLoadFloat4x4(&boxWorldMatrix));
 
 	previousMousePosition = currentMousePosition;
 }
@@ -532,8 +558,10 @@ void UpdateFrameTime()
 
 	previousTime = currentTime;
 
+	previousFrameTime = previousFrameTime * 0.95f + frameTime * 0.05f;
+
 	std::wostringstream strs;
-	strs << "3D Project | " << frameTime * 1000 << " ms | " << 1.0 / frameTime << " fps";
+	strs << "3D Project | " << previousFrameTime * 1000 << " ms | " << 1.0 / previousFrameTime << " fps";
 	SetWindowText(windowHandle, strs.str().c_str());
 }
 
@@ -557,6 +585,8 @@ void Render()
 	// clear depth buffer
 	deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
+	deviceContext->ClearDepthStencilView(testDirectionalLight->shadowMapDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
 	RenderDeferredRendering();
 
 	// display frame
@@ -566,12 +596,13 @@ void Render()
 void CreateTestInput()
 {
 	// create test lights
-	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), XMFLOAT4(1.0f, 0.0f, 0.0f, 1), 30.0f, pointLightModel);
+	testPointLight = new PointLight(device, deviceContext, XMFLOAT4(1.3f, 1.25f, -1.5f, 1), XMFLOAT4(0.5f, 0.0f, 0.0f, 1), XMFLOAT4(0.5f, 0.0f, 0.0f, 1), 10.0f, pointLightModel);
 	testPointLight->Initialize();
-	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
+	testSpotLight = new SpotLight(device, deviceContext, XMFLOAT4(-1.3, 2, -1.3, 1), XMFLOAT4(0, 1, 0, 1), XMFLOAT4(0, 0.5f, 0, 1), XMFLOAT4(1, -1.7, 1, 0), 5, 3, spotLightModel);
 	testSpotLight->Initialize();
-	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(0, 0, 0, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(0.0f, 0.0f, 0.1f, 1), XMFLOAT4(1, -1, 0.7f, 0), directionalLightModel);
+	testDirectionalLight = new DirectionalLight(device, deviceContext, XMFLOAT4(-5.0f, 6.0f, -10.0f, 1.0f), XMFLOAT4(0.2f, 0.2f, 0.7f, 1), XMFLOAT4(0.7f, 0.7f, 1.0f, 1), XMFLOAT4(0.1f, -1.0f, 1.0f, 0), directionalLightModel, shadowMapSize, shadowAreaWidth, shadowAreaHeight, shadowAreaNear, shadowAreaFar);
 	testDirectionalLight->Initialize();
+	getShadowAreaPlanes();
 }
 
 void SetupDeferredRendering()
@@ -856,6 +887,20 @@ void SetupDeferredRendering()
 
 	device->CreateRasterizerState(&lightRasterizerStateDesc, &deferredLightRasterizerState);
 
+	D3D11_RASTERIZER_DESC shadowMappingRasterizerStateDesc;
+	shadowMappingRasterizerStateDesc.FillMode = D3D11_FILL_SOLID;
+	shadowMappingRasterizerStateDesc.CullMode = D3D11_CULL_BACK;
+	shadowMappingRasterizerStateDesc.FrontCounterClockwise = false;
+	shadowMappingRasterizerStateDesc.DepthBias = 60000;
+	shadowMappingRasterizerStateDesc.SlopeScaledDepthBias = 1.0f;
+	shadowMappingRasterizerStateDesc.DepthBiasClamp = 0.0f;
+	shadowMappingRasterizerStateDesc.DepthClipEnable = true;
+	shadowMappingRasterizerStateDesc.ScissorEnable = false;
+	shadowMappingRasterizerStateDesc.MultisampleEnable = false;
+	shadowMappingRasterizerStateDesc.AntialiasedLineEnable = false;
+
+	device->CreateRasterizerState(&shadowMappingRasterizerStateDesc, &shadowMappingRasterizerState);
+
 	D3D11_DEPTH_STENCIL_DESC geometryDepthStateDesc;
 	geometryDepthStateDesc.DepthEnable = true;
 	geometryDepthStateDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -1020,6 +1065,53 @@ void SetupDeferredRendering()
 		cs->GetBufferSize(),
 		nullptr,
 		&verticalBlurShader);
+#pragma endregion
+
+#pragma region shadow mapping shader
+	hr = D3DCompileFromFile(
+		L"ShadowMappingVertex.hlsl",
+		nullptr,
+		nullptr,
+		"main",
+		"vs_4_0",
+		0, 0,
+		&vs,
+		nullptr);
+
+	device->CreateVertexShader(
+		vs->GetBufferPointer(),
+		vs->GetBufferSize(),
+		nullptr,
+		&shadowMappingVertexShader);
+#pragma endregion
+
+#pragma region samplers
+	D3D11_SAMPLER_DESC shadowSamplerDesc;
+	shadowSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.BorderColor[0] = 1.0f;
+	shadowSamplerDesc.BorderColor[1] = 1.0f;
+	shadowSamplerDesc.BorderColor[2] = 1.0f;
+	shadowSamplerDesc.BorderColor[3] = 1.0f;
+	shadowSamplerDesc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+	shadowSamplerDesc.Filter = D3D11_FILTER_COMPARISON_MIN_LINEAR_MAG_POINT_MIP_LINEAR;
+	shadowSamplerDesc.MaxAnisotropy = 1;
+	shadowSamplerDesc.MinLOD = 0;
+	shadowSamplerDesc.MaxLOD = 0;
+	shadowSamplerDesc.MipLODBias = 0.0f;
+
+	device->CreateSamplerState(&shadowSamplerDesc, &shadowSampler);
+#pragma endregion
+
+#pragma region shadow viewport
+	// create viewport
+	shadowViewPort.Width = (float)shadowMapSize;
+	shadowViewPort.Height = (float)shadowMapSize;
+	shadowViewPort.TopLeftX = 0;
+	shadowViewPort.TopLeftY = 0;
+	shadowViewPort.MaxDepth = 1.0f;
+	shadowViewPort.MinDepth = 0.0f;
 #pragma endregion
 }
 
@@ -1248,8 +1340,8 @@ void RenderDeferredRendering()
 	deviceContext->OMSetBlendState(deferredGeometryBlendState, NULL, 0xffffffff);
 
 	// set render targets
-	ID3D11ShaderResourceView* emptySRV[3] = { nullptr, nullptr, nullptr };
-	deviceContext->PSSetShaderResources(0, 3, emptySRV);
+	ID3D11ShaderResourceView* emptySRV[4] = { nullptr, nullptr, nullptr, nullptr };
+	deviceContext->PSSetShaderResources(0, 4, emptySRV);
 
 	ID3D11RenderTargetView* rtvs[] = { ColorBufferRenderTargetView, PositionBufferRenderTargetView, NormalBufferRenderTargetView };
 	deviceContext->OMSetRenderTargets(3, rtvs, depthView);
@@ -1262,6 +1354,8 @@ void RenderDeferredRendering()
 	// set viewproj buffers
 	ID3D11Buffer* viewProjectionMatrices[] = {	useObserverCamera ? (observerCamera->viewMatrixBuffer) : (mainCamera->viewMatrixBuffer), 
 												useObserverCamera ? (observerCamera->projectionMatrixBuffer) : (mainCamera->projectionMatrixBuffer) };
+
+
 	deviceContext->VSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 	deviceContext->GSSetConstantBuffers(1, 2, viewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 
@@ -1269,12 +1363,32 @@ void RenderDeferredRendering()
 	deviceContext->IASetInputLayout(deferredGeometryInputLayout);
 	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+	// set sampler
+	ID3D11SamplerState* emptySS = nullptr;
+	deviceContext->PSSetSamplers(0, 1, &emptySS);
+
+	// set viewport
+	deviceContext->RSSetViewports(1, &viewPort);
+
 	// set world buffers + vertex/index buffers + render objects
 	UINT vertexSize = 48;
 	boxObject->Render(deviceContext, &vertexSize);
 	terrainObject->Render(deviceContext, &vertexSize);
 	quadTree->Render(deviceContext, &vertexSize, cameraPlanes, std::sqrtf(3.0f));
 
+	// render shadow map
+	deviceContext->RSSetState(shadowMappingRasterizerState);
+	ID3D11RenderTargetView* emptyRTV = { nullptr };
+	deviceContext->OMSetRenderTargets(1, &emptyRTV, testDirectionalLight->shadowMapDepthView);
+	deviceContext->VSSetShader(shadowMappingVertexShader, nullptr, 0);
+	deviceContext->GSSetShader(nullptr, nullptr, 0);
+	deviceContext->PSSetShader(nullptr, nullptr, 0);
+	ID3D11Buffer* shadowViewProjectionMatrices[] = { testDirectionalLight->viewMatrixBuffer, testDirectionalLight->projectionMatrixBuffer };
+	deviceContext->VSSetConstantBuffers(1, 2, shadowViewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
+	deviceContext->RSSetViewports(1, &shadowViewPort);
+	boxObject->Render(deviceContext, &vertexSize);
+	terrainObject->Render(deviceContext, &vertexSize);
+	quadTree->Render(deviceContext, &vertexSize, directionalLightPlanes, std::sqrtf(3.0f));
 
 	// lights
 	// set backface culling, depth culling and blending states
@@ -1292,6 +1406,7 @@ void RenderDeferredRendering()
 	// set viewproj buffers
 	ID3D11Buffer* lightViewProjectionMatrices[] = { useObserverCamera ? (observerCamera->viewMatrixBuffer) : (mainCamera->viewMatrixBuffer),
 													useObserverCamera ? (observerCamera->projectionMatrixBuffer) : (mainCamera->projectionMatrixBuffer) };
+
 	deviceContext->VSSetConstantBuffers(1, 2, lightViewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 	deviceContext->GSSetConstantBuffers(1, 2, lightViewProjectionMatrices);	// slot 1 view matrix, slot 2 projection matrix
 
@@ -1300,14 +1415,24 @@ void RenderDeferredRendering()
 	deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// set gbuffers
-	ID3D11ShaderResourceView* srvs[] = { ColorBufferShaderResourceView, PositionBufferShaderResourceView, NormalBufferShaderResourceView };
-	deviceContext->PSSetShaderResources(0, 3, srvs);
+	ID3D11ShaderResourceView* srvs[] = { ColorBufferShaderResourceView, PositionBufferShaderResourceView, NormalBufferShaderResourceView, testDirectionalLight->shadowMapShaderResourceView };
+	deviceContext->PSSetShaderResources(0, 4, srvs);
 
 	// set ambient light
 	deviceContext->PSSetConstantBuffers(1, 1, &ambientLightColorBuffer);
 
 	// set camera position buffer
 	deviceContext->PSSetConstantBuffers(3, 1, useObserverCamera ? &(observerCamera->cameraPositionBuffer) : &(mainCamera->cameraPositionBuffer));
+
+	// set light matrices
+	deviceContext->PSSetConstantBuffers(4, 1, &(testDirectionalLight->viewMatrixBuffer));
+	deviceContext->PSSetConstantBuffers(5, 1, &(testDirectionalLight->projectionMatrixBuffer));
+
+	// set sampler
+	deviceContext->PSSetSamplers(0, 1, &shadowSampler);
+
+	// set viewport
+	deviceContext->RSSetViewports(1, &viewPort);
 
 	// set world buffers + vertex/index buffers + render lights
 	vertexSize = 12;
@@ -1360,6 +1485,7 @@ void RenderDeferredRendering()
 
 		deviceContext->CSSetConstantBuffers(0, 1, &blurWeightsBuffer);
 
+		// debug
 		deviceContext->CSSetShaderResources(0, 1, &blurredTextureShaderResourceView);
 
 		deviceContext->CSSetUnorderedAccessViews(0, 1, &backBufferUnorderedAccessView, 0);
@@ -1853,10 +1979,10 @@ void getCameraPlanes(Camera* camera)
 	cameraPlanes[3].distance = -(m._44 + m._42);
 
 	// near plane
-	cameraPlanes[4].normal.x = -(m._14 + m._13);
-	cameraPlanes[4].normal.y = -(m._24 + m._23);
-	cameraPlanes[4].normal.z = -(m._34 + m._33);
-	cameraPlanes[4].distance = -(m._44 + m._43);
+	cameraPlanes[4].normal.x = -(m._13);
+	cameraPlanes[4].normal.y = -(m._23);
+	cameraPlanes[4].normal.z = -(m._33);
+	cameraPlanes[4].distance = -(m._43);
 
 	// far plane
 	cameraPlanes[5].normal.x = -(m._14 - m._13);
@@ -1873,5 +1999,63 @@ void getCameraPlanes(Camera* camera)
 		cameraPlanes[i].normal.y *= divisor;
 		cameraPlanes[i].normal.z *= divisor;
 		cameraPlanes[i].distance *= divisor;
+	}
+}
+
+void getShadowAreaPlanes()
+{
+	XMFLOAT4X4 m;
+
+	XMMATRIX proj = XMLoadFloat4x4(&(testDirectionalLight->projectionMatrix));
+	XMMATRIX view = XMLoadFloat4x4(&(testDirectionalLight->viewMatrix));
+	XMMATRIX ma = XMMatrixMultiply(view, proj);
+
+	XMStoreFloat4x4(&m, ma);
+
+	// left plane
+	directionalLightPlanes[0].normal.x = -(m._14 + m._11);
+	directionalLightPlanes[0].normal.y = -(m._24 + m._21);
+	directionalLightPlanes[0].normal.z = -(m._34 + m._31);
+	directionalLightPlanes[0].distance = -(m._44 + m._41);
+
+	// right plane
+	directionalLightPlanes[1].normal.x = -(m._14 - m._11);
+	directionalLightPlanes[1].normal.y = -(m._24 - m._21);
+	directionalLightPlanes[1].normal.z = -(m._34 - m._31);
+	directionalLightPlanes[1].distance = -(m._44 - m._41);
+
+	// top plane
+	directionalLightPlanes[2].normal.x = -(m._14 - m._12);
+	directionalLightPlanes[2].normal.y = -(m._24 - m._22);
+	directionalLightPlanes[2].normal.z = -(m._34 - m._32);
+	directionalLightPlanes[2].distance = -(m._44 - m._42);
+
+	// bottom plane
+	directionalLightPlanes[3].normal.x = -(m._14 + m._12);
+	directionalLightPlanes[3].normal.y = -(m._24 + m._22);
+	directionalLightPlanes[3].normal.z = -(m._34 + m._32);
+	directionalLightPlanes[3].distance = -(m._44 + m._42);
+
+	// near plane
+	directionalLightPlanes[4].normal.x = -(m._13);
+	directionalLightPlanes[4].normal.y = -(m._23);
+	directionalLightPlanes[4].normal.z = -(m._33);
+	directionalLightPlanes[4].distance = -(m._43);
+
+	// far plane
+	directionalLightPlanes[5].normal.x = -(m._14 - m._13);
+	directionalLightPlanes[5].normal.y = -(m._24 - m._23);
+	directionalLightPlanes[5].normal.z = -(m._34 - m._33);
+	directionalLightPlanes[5].distance = -(m._44 - m._43);
+
+	// normalize
+	for (int i = 0; i < 6; i++)
+	{
+		float divisor = 1.0f / XMVectorGetX(XMVector3Length(XMLoadFloat3(&directionalLightPlanes[i].normal)));
+
+		directionalLightPlanes[i].normal.x *= divisor;
+		directionalLightPlanes[i].normal.y *= divisor;
+		directionalLightPlanes[i].normal.z *= divisor;
+		directionalLightPlanes[i].distance *= divisor;
 	}
 }

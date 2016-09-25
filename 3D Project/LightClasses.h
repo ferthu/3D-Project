@@ -46,17 +46,27 @@ class DirectionalLight : public Light
 {
 private:
 	DirectX::XMFLOAT4 direction;
+	DirectX::XMFLOAT4X4 rotationMatrix;
+	float shadowAreaWidth, shadowAreaHeight, shadowAreaNear, shadowAreaFar;
 
 	void updateWorldMatrix();
 	void* prepareBufferData();
 	int getBufferSize();
 
 public:
+	ID3D11Buffer* projectionMatrixBuffer;
+	ID3D11Buffer* viewMatrixBuffer;
+	ID3D11DepthStencilView* shadowMapDepthView;
+	ID3D11ShaderResourceView* shadowMapShaderResourceView;
+	UINT shadowMapSize;
+	DirectX::XMFLOAT4X4 viewMatrix;
+	DirectX::XMFLOAT4X4 projectionMatrix;
+
 	DirectX::XMFLOAT4 getDirection();
 	void setDirection(DirectX::XMFLOAT4 dir);
 	void Render(ID3D11DeviceContext* deviceContext, UINT* vertexSize);
 
-	DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol, DirectX::XMFLOAT4 dir, Model* lightModel);
+	DirectionalLight(ID3D11Device* device, ID3D11DeviceContext* deviceContext, DirectX::XMFLOAT4 pos, DirectX::XMFLOAT4 col, DirectX::XMFLOAT4 specCol, DirectX::XMFLOAT4 dir, Model* lightModel, UINT shadowMapSize, float shadowAreaWidth, float shadowAreaHeight, float shadowAreaNear, float shadowAreaFar);
 	virtual ~DirectionalLight();
 };
 

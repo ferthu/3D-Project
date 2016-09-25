@@ -109,5 +109,8 @@
     <FxCompile Include="VerticalBlurCompute.hlsl">
       <Filter>Source Files\Compute Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="ShadowMappingVertex.hlsl">
+      <Filter>Source Files\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
